@@ -1,0 +1,652 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@400;500&display=swap');
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --lime:#CCFF00;--lime-dim:#99CC00;--dark:#0A0A0A;--surface:#141414;
+    --surface2:#1E1E1E;--surface3:#252525;--text:#F0F0F0;--muted:#888;
+    --border:rgba(255,255,255,0.08);--font-head:'Barlow Condensed',sans-serif;--font-body:'Barlow',sans-serif;
+  }
+  body{background:var(--dark);color:var(--text);font-family:var(--font-body);min-height:100vh}
+  #app{max-width:960px;margin:0 auto;padding:2rem 1.5rem}
+  header{display:flex;align-items:center;gap:16px;margin-bottom:2.5rem}
+  .logo-icon{width:42px;height:42px;background:var(--lime);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .logo-icon svg{width:24px;height:24px;fill:#000}
+  header h1{font-family:var(--font-head);font-size:28px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+  header span{color:var(--lime)}
+  header p{font-size:13px;color:var(--muted);margin-top:2px}
+  .main-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:680px){.main-grid{grid-template-columns:1fr}}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .panel-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .panel-title{font-family:var(--font-head);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)}
+  .panel-body{padding:18px}
+
+  /* Tab bar */
+  .tab-bar{display:flex;gap:4px;padding:12px 18px 0;border-bottom:1px solid var(--border)}
+  .tab-btn{flex:1;padding:9px 4px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--font-head);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;cursor:pointer;transition:color .15s,border-color .15s;margin-bottom:-1px}
+  .tab-btn.active{color:var(--lime);border-bottom-color:var(--lime)}
+  .tab-content{display:none;padding:18px}
+  .tab-content.active{display:block}
+
+  /* Drop zone */
+  #drop-zone{border:1.5px dashed rgba(204,255,0,.25);border-radius:10px;padding:2rem 1rem;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+  #drop-zone:hover,#drop-zone.dragover{border-color:var(--lime);background:rgba(204,255,0,.03)}
+  #drop-zone .drop-icon{font-size:28px;margin-bottom:10px;opacity:.6}
+  #drop-zone h3{font-family:var(--font-head);font-size:15px;font-weight:600;margin-bottom:4px}
+  #drop-zone p{font-size:12px;color:var(--muted)}
+  #drop-zone input{display:none}
+
+  /* Camera */
+  #camera-preview{width:100%;border-radius:8px;background:#000;display:none;max-height:220px;object-fit:cover}
+  #recorded-preview{width:100%;border-radius:8px;background:#000;display:none;max-height:220px;object-fit:contain;margin-top:10px}
+  .cam-controls{display:none;gap:8px;margin-top:10px}
+  .cam-btn{flex:1;padding:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:8px;font-family:var(--font-head);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;cursor:pointer;transition:background .15s}
+  .cam-btn:hover{background:var(--surface3)}
+  .cam-btn.rec{background:rgba(255,60,60,.15);border-color:rgba(255,60,60,.4);color:#FF6666}
+  .cam-btn.rec.recording{background:rgba(255,60,60,.3);animation:pulse 1s infinite}
+  .cam-btn.use{background:rgba(204,255,0,.1);border-color:rgba(204,255,0,.3);color:var(--lime)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+  .rec-timer{font-family:var(--font-head);font-size:13px;color:#FF6666;margin-top:6px;display:none;text-align:center;letter-spacing:1px}
+
+  /* Shared video/settings */
+  #video-preview{width:100%;border-radius:8px;background:#000;display:none;max-height:240px;object-fit:contain}
+  .video-info{margin-top:10px;font-size:12px;color:var(--muted);display:none}
+  .video-info span{color:var(--text);font-weight:500}
+  .settings{margin-top:14px;display:none}
+  .setting-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .setting-label{font-size:13px;color:var(--muted)}
+  .setting-value{font-size:13px;font-weight:500;color:var(--lime);min-width:28px;text-align:right}
+  input[type=range]{-webkit-appearance:none;width:100px;height:3px;background:var(--surface3);border-radius:2px;outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--lime);border-radius:50%}
+  select{background:var(--surface3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;font-family:var(--font-body)}
+
+  /* Buttons */
+  .action-btn{width:100%;padding:13px;background:var(--lime);color:#000;border:none;border-radius:8px;font-family:var(--font-head);font-size:16px;font-weight:700;text-transform:uppercase;letter-spacing:1px;cursor:pointer;transition:opacity .15s,transform .1s;display:none;margin-top:14px}
+  .action-btn:hover{opacity:.88}
+  .action-btn:active{transform:scale(.99)}
+  .action-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+  .pdf-btn{width:auto;padding:8px 18px;background:transparent;color:var(--lime);border:1px solid rgba(204,255,0,.3);border-radius:8px;font-family:var(--font-head);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;cursor:pointer;transition:background .15s;display:none}
+  .pdf-btn:hover{background:rgba(204,255,0,.08)}
+
+  /* Results */
+  #results-panel{grid-column:1/-1;display:none}
+  .progress-bar{height:3px;background:var(--surface3);border-radius:2px;overflow:hidden;margin:0 18px;display:none}
+  .progress-fill{height:100%;background:var(--lime);width:0%;transition:width .3s}
+  .status-text{padding:10px 18px;font-size:12px;color:var(--muted);display:none}
+  .summary-bar{display:flex;gap:20px;padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:center}
+  .stat{text-align:center}
+  .stat-num{font-family:var(--font-head);font-size:24px;font-weight:700}
+  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+  .stat.red .stat-num{color:#FF6666}
+  .stat.lime .stat-num{color:var(--lime)}
+  .stat.blue .stat-num{color:#66BBFF}
+  .seek-hint{font-size:11px;color:var(--muted);padding:0 18px 12px}
+  .feedback-list{padding:18px;display:flex;flex-direction:column;gap:12px}
+  .feedback-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .15s,background .15s;border-left:3px solid transparent}
+  .feedback-card:hover{border-color:rgba(204,255,0,.3);background:var(--surface3)}
+  .feedback-card.critical{border-left-color:#FF4444}
+  .feedback-card.suggestion{border-left-color:var(--lime)}
+  .feedback-card.positive{border-left-color:#44AAFF}
+  .fc-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .fc-timestamp{font-family:var(--font-head);font-size:13px;font-weight:600;background:var(--surface3);border:1px solid var(--border);padding:3px 8px;border-radius:5px;color:var(--lime);flex-shrink:0;letter-spacing:.5px}
+  .fc-badge{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding:2px 7px;border-radius:4px}
+  .badge-critical{background:rgba(255,68,68,.15);color:#FF6666}
+  .badge-suggestion{background:rgba(204,255,0,.1);color:var(--lime-dim)}
+  .badge-positive{background:rgba(68,170,255,.12);color:#66BBFF}
+  .fc-title{font-family:var(--font-head);font-size:15px;font-weight:600;margin-bottom:4px}
+  .fc-body{font-size:13px;color:var(--muted);line-height:1.55}
+  .fc-tip{margin-top:8px;padding:8px 10px;background:rgba(204,255,0,.05);border-radius:6px;font-size:12px;color:#AABB88;border:1px solid rgba(204,255,0,.1)}
+  .fc-tip strong{color:var(--lime);font-weight:500}
+  #canvas-el{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M19.5 4.5A2.12 2.12 0 0 0 16.5 1.5L7 11a6 6 0 0 0-1.5 2.5L4 18l4.5-1.5A6 6 0 0 0 11 15ZM5.5 19.5l-1-4 4-1Z"/><circle cx="20" cy="4" r="2.5"/></svg>
+    </div>
+    <div>
+      <h1>Shuttle<span>IQ</span></h1>
+      <p>AI-powered badminton coaching · Record or upload · Analyze · Improve</p>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <!-- Input Panel -->
+    <div class="panel">
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('upload')">📁 Upload</button>
+        <button class="tab-btn" onclick="switchTab('camera')">📱 Camera</button>
+      </div>
+
+      <!-- Upload Tab -->
+      <div class="tab-content active" id="tab-upload">
+        <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <div class="drop-icon">🎬</div>
+          <h3>Drop your video here</h3>
+          <p>MP4, MOV, WebM · Max 100MB</p>
+          <input type="file" id="file-input" accept="video/*">
+        </div>
+        <video id="video-preview" controls></video>
+        <div class="video-info" id="video-info">
+          <span id="vid-name">—</span> · <span id="vid-dur">—</span>
+        </div>
+        <div class="settings" id="settings-upload">
+          <div class="setting-row">
+            <span class="setting-label">Frames per minute</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="2" max="12" value="6" id="fpm-slider" step="1">
+              <span class="setting-value" id="fpm-val">6</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Focus area</span>
+            <select id="focus-select">
+              <option value="overall">Overall technique</option>
+              <option value="footwork">Footwork</option>
+              <option value="smash">Smash form</option>
+              <option value="serve">Service technique</option>
+              <option value="clear">Overhead clear</option>
+              <option value="net">Net play</option>
+            </select>
+          </div>
+        </div>
+        <button class="action-btn" id="analyze-btn" onclick="runAnalysis()">⚡ Analyze Technique</button>
+      </div>
+
+      <!-- Camera Tab -->
+      <div class="tab-content" id="tab-camera">
+        <div id="cam-placeholder" style="border:1.5px dashed rgba(204,255,0,.25);border-radius:10px;padding:2rem 1rem;text-align:center">
+          <div style="font-size:28px;margin-bottom:10px;opacity:.6">📱</div>
+          <h3 style="font-family:var(--font-head);font-size:15px;font-weight:600;margin-bottom:6px">Record yourself playing</h3>
+          <p style="font-size:12px;color:var(--muted)">Use your device camera to capture technique in real time</p>
+          <button onclick="startCamera()" style="margin-top:14px;padding:10px 22px;background:rgba(204,255,0,.1);color:var(--lime);border:1px solid rgba(204,255,0,.3);border-radius:8px;font-family:var(--font-head);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;cursor:pointer">Enable Camera</button>
+        </div>
+        <video id="camera-preview" autoplay muted playsinline></video>
+        <div class="cam-controls" id="cam-controls">
+          <button class="cam-btn rec" id="rec-btn" onclick="toggleRecord()">⏺ Record</button>
+          <button class="cam-btn" onclick="stopCamera()" style="flex:0;padding:10px 14px">✕</button>
+        </div>
+        <div class="rec-timer" id="rec-timer">⏺ 0:00</div>
+        <video id="recorded-preview" controls></video>
+        <div class="settings" id="settings-camera" style="display:none">
+          <div class="setting-row">
+            <span class="setting-label">Frames per minute</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="2" max="12" value="6" id="fpm-slider-cam" step="1">
+              <span class="setting-value" id="fpm-val-cam">6</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Focus area</span>
+            <select id="focus-select-cam">
+              <option value="overall">Overall technique</option>
+              <option value="footwork">Footwork</option>
+              <option value="smash">Smash form</option>
+              <option value="serve">Service technique</option>
+              <option value="clear">Overhead clear</option>
+              <option value="net">Net play</option>
+            </select>
+          </div>
+        </div>
+        <button class="action-btn" id="analyze-cam-btn" onclick="runAnalysisFromCam()">⚡ Analyze Recording</button>
+      </div>
+    </div>
+
+    <!-- Info Panel -->
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Coaching Guide</span></div>
+      <div class="panel-body">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div style="width:28px;height:28px;background:rgba(204,255,0,.1);border:1px solid rgba(204,255,0,.2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--font-head);font-weight:700;color:var(--lime);font-size:14px;flex-shrink:0">1</div>
+            <div><div style="font-size:13px;font-weight:500;margin-bottom:3px">Record live or upload a clip</div><div style="font-size:12px;color:var(--muted)">Use the camera tab to record yourself playing, or upload an existing video</div></div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div style="width:28px;height:28px;background:rgba(204,255,0,.1);border:1px solid rgba(204,255,0,.2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--font-head);font-weight:700;color:var(--lime);font-size:14px;flex-shrink:0">2</div>
+            <div><div style="font-size:13px;font-weight:500;margin-bottom:3px">AI samples key frames</div><div style="font-size:12px;color:var(--muted)">Claude vision analyzes body posture, racket angle, court positioning</div></div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div style="width:28px;height:28px;background:rgba(204,255,0,.1);border:1px solid rgba(204,255,0,.2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--font-head);font-weight:700;color:var(--lime);font-size:14px;flex-shrink:0">3</div>
+            <div><div style="font-size:13px;font-weight:500;margin-bottom:3px">Get your PDF coaching report</div><div style="font-size:12px;color:var(--muted)">Download and share a full report with timestamped feedback cards</div></div>
+          </div>
+        </div>
+        <div style="margin-top:18px;padding:12px;background:rgba(204,255,0,.05);border:1px solid rgba(204,255,0,.12);border-radius:8px">
+          <div style="font-size:11px;color:var(--lime-dim);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:6px">📱 Camera tips</div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.7">Place your phone side-on at hip height · Ensure good lighting · Full body in frame · 15–60 second clips work best</div>
+        </div>
+        <div style="margin-top:12px;padding:12px;background:rgba(68,170,255,.05);border:1px solid rgba(68,170,255,.12);border-radius:8px">
+          <div style="font-size:11px;color:#66BBFF;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:6px">📄 PDF report includes</div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.7">Session metadata · All feedback cards · Drill recommendations · Issue/strength summary</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="panel" id="results-panel">
+      <div class="panel-header">
+        <span class="panel-title">Coaching Report</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span id="frame-count" style="font-size:11px;color:var(--muted)"></span>
+          <button class="pdf-btn" id="pdf-btn" onclick="exportPDF()">⬇ Export PDF</button>
+        </div>
+      </div>
+      <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="status-text" id="status-text"></div>
+      <div id="summary-bar"></div>
+      <div class="seek-hint" id="seek-hint" style="display:none">↑ Click any card to jump to that moment in the video</div>
+      <div class="feedback-list" id="feedback-list">
+        <div style="text-align:center;padding:3rem 1rem;color:var(--muted)">
+          <div style="font-size:36px;margin-bottom:12px;opacity:.4">🏸</div>
+          <p style="font-size:13px">Analysis will appear here</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<canvas id="canvas-el"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const canvas = document.getElementById('canvas-el');
+const ctx = canvas.getContext('2d');
+let videoFile = null;
+let cameraStream = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordedBlob = null;
+let recInterval = null;
+let recSeconds = 0;
+let lastFeedback = [];
+let lastFocusLabel = 'Overall technique';
+let lastVideoSource = 'upload';
+
+// ── Tab switching ──────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='upload')||(i===1&&tab==='camera')));
+  document.getElementById('tab-upload').classList.toggle('active', tab==='upload');
+  document.getElementById('tab-camera').classList.toggle('active', tab==='camera');
+}
+
+// ── Upload ─────────────────────────────────────────────────────
+document.getElementById('fpm-slider').oninput = e => document.getElementById('fpm-val').textContent = e.target.value;
+document.getElementById('fpm-slider-cam').oninput = e => document.getElementById('fpm-val-cam').textContent = e.target.value;
+
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); const f=e.dataTransfer.files[0]; if(f&&f.type.startsWith('video/')) loadUploadedVideo(f); });
+document.getElementById('file-input').onchange = e => { if(e.target.files[0]) loadUploadedVideo(e.target.files[0]); };
+
+function loadUploadedVideo(file) {
+  videoFile = file; lastVideoSource = 'upload';
+  const url = URL.createObjectURL(file);
+  const vp = document.getElementById('video-preview');
+  vp.src = url; vp.style.display = 'block';
+  dropZone.style.display = 'none';
+  document.getElementById('video-info').style.display = 'block';
+  document.getElementById('settings-upload').style.display = 'block';
+  document.getElementById('analyze-btn').style.display = 'block';
+  document.getElementById('vid-name').textContent = file.name;
+  vp.onloadedmetadata = () => { const d=Math.round(vp.duration); document.getElementById('vid-dur').textContent=`${Math.floor(d/60)}:${String(d%60).padStart(2,'0')}`; };
+}
+
+// ── Camera ─────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width:{ideal:1280}, height:{ideal:720} }, audio: false });
+    const cp = document.getElementById('camera-preview');
+    cp.srcObject = cameraStream; cp.style.display = 'block';
+    document.getElementById('cam-placeholder').style.display = 'none';
+    document.getElementById('cam-controls').style.display = 'flex';
+  } catch(err) {
+    alert('Camera access denied or not available: ' + err.message);
+  }
+}
+
+function stopCamera() {
+  if(cameraStream) { cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
+  document.getElementById('camera-preview').style.display = 'none';
+  document.getElementById('camera-preview').srcObject = null;
+  document.getElementById('cam-controls').style.display = 'none';
+  document.getElementById('cam-placeholder').style.display = 'block';
+  stopRecordTimer();
+}
+
+function toggleRecord() {
+  const btn = document.getElementById('rec-btn');
+  if(!mediaRecorder || mediaRecorder.state === 'inactive') {
+    recordedChunks = [];
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
+    mediaRecorder = new MediaRecorder(cameraStream, { mimeType });
+    mediaRecorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = finishRecording;
+    mediaRecorder.start(100);
+    btn.textContent = '⏹ Stop'; btn.classList.add('recording');
+    startRecordTimer();
+  } else {
+    mediaRecorder.stop(); btn.textContent = '⏺ Record'; btn.classList.remove('recording');
+    stopRecordTimer();
+  }
+}
+
+function startRecordTimer() {
+  recSeconds = 0;
+  document.getElementById('rec-timer').style.display = 'block';
+  recInterval = setInterval(() => {
+    recSeconds++;
+    const m=Math.floor(recSeconds/60), s=recSeconds%60;
+    document.getElementById('rec-timer').textContent = `⏺ ${m}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+}
+function stopRecordTimer() {
+  clearInterval(recInterval);
+  document.getElementById('rec-timer').style.display = 'none';
+}
+
+function finishRecording() {
+  const mimeType = recordedChunks[0]?.type || 'video/webm';
+  recordedBlob = new Blob(recordedChunks, { type: mimeType });
+  const url = URL.createObjectURL(recordedBlob);
+  const rp = document.getElementById('recorded-preview');
+  rp.src = url; rp.style.display = 'block';
+  document.getElementById('settings-camera').style.display = 'block';
+  document.getElementById('analyze-cam-btn').style.display = 'block';
+  lastVideoSource = 'camera';
+}
+
+// ── Frame extraction ───────────────────────────────────────────
+function fmtTime(s) { const m=Math.floor(s/60),sec=Math.floor(s%60); return `${m}:${String(sec).padStart(2,'0')}`; }
+
+async function extractFrames(video, fpm) {
+  const dur = video.duration;
+  const interval = 60/fpm;
+  const times = [];
+  for(let t=0; t<dur; t+=interval) times.push(Math.min(t, dur-0.1));
+  const frames = [];
+  for(const t of times) {
+    await new Promise(res => {
+      video.currentTime = t;
+      video.onseeked = () => {
+        canvas.width=480; canvas.height=270;
+        ctx.drawImage(video,0,0,480,270);
+        frames.push({ time:t, b64: canvas.toDataURL('image/jpeg',0.7).split(',')[1] });
+        res();
+      };
+    });
+  }
+  return frames;
+}
+
+// ── Analysis ───────────────────────────────────────────────────
+async function runAnalysis() {
+  const vp = document.getElementById('video-preview');
+  lastFocusLabel = document.getElementById('focus-select').options[document.getElementById('focus-select').selectedIndex].text;
+  await analyze(vp, parseInt(document.getElementById('fpm-slider').value), document.getElementById('focus-select').value, document.getElementById('analyze-btn'));
+}
+
+async function runAnalysisFromCam() {
+  const rp = document.getElementById('recorded-preview');
+  lastFocusLabel = document.getElementById('focus-select-cam').options[document.getElementById('focus-select-cam').selectedIndex].text;
+  await analyze(rp, parseInt(document.getElementById('fpm-slider-cam').value), document.getElementById('focus-select-cam').value, document.getElementById('analyze-cam-btn'));
+}
+
+async function analyze(videoEl, fpm, focus, btn) {
+  btn.disabled = true; btn.textContent = '⏳ Extracting frames...';
+  const rp = document.getElementById('results-panel');
+  rp.style.display = 'block'; rp.scrollIntoView({ behavior:'smooth', block:'start' });
+  document.getElementById('progress-bar').style.display = 'block';
+  document.getElementById('status-text').style.display = 'block';
+  document.getElementById('feedback-list').innerHTML = '';
+  document.getElementById('summary-bar').innerHTML = '';
+  document.getElementById('seek-hint').style.display = 'none';
+  document.getElementById('pdf-btn').style.display = 'none';
+
+  setStatus('Extracting video frames...', 10);
+  const frames = await extractFrames(videoEl, fpm);
+  document.getElementById('frame-count').textContent = `${frames.length} frames analyzed`;
+  setStatus(`Sending ${frames.length} frames to AI coach...`, 30);
+  btn.textContent = '🧠 Analyzing...';
+
+  const focusMap = {
+    overall:'overall technique including footwork, swing mechanics, body posture, and positioning',
+    footwork:'footwork — court movement, split step timing, recovery position, and stance',
+    smash:'smash technique — jump timing, racket preparation, contact point, and power generation',
+    serve:'service technique — stance, toss, racket face angle, and consistency',
+    clear:'overhead clear — hitting posture, shoulder rotation, arm extension, and shuttle contact',
+    net:'net play — approach speed, racket face control, body lean, and touch shots'
+  };
+
+  const imageContent = frames.map(f => ({ type:'image', source:{ type:'base64', media_type:'image/jpeg', data:f.b64 } }));
+  const textPrompt = `You are an expert badminton coach analyzing a player's technique from video frames. Frames are in chronological order, sampled every ${(60/fpm).toFixed(1)} seconds.
+
+Video timestamps:
+${frames.map((f,i)=>`Frame ${i+1}: ${fmtTime(f.time)}`).join('\n')}
+
+Focus: ${focusMap[focus]}
+
+Return ONLY a JSON array (no markdown, no preamble):
+[{"timestamp":"M:SS","type":"critical|suggestion|positive","title":"max 5 words","body":"2-3 sentences describing what you see and why","tip":"1 specific drill or correction"}]
+
+Rules: critical=significant errors, suggestion=improvements, positive=strengths (include 1-2). Give 5-10 items. Timestamps must match frame timestamps above.`;
+
+  try {
+    setStatus('AI coach reviewing your technique...', 55);
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, messages:[{ role:'user', content:[...imageContent,{type:'text',text:textPrompt}] }] })
+    });
+    setStatus('Generating coaching report...', 80);
+    const data = await resp.json();
+    const raw = data.content.map(b=>b.text||'').join('').trim();
+    let feedback;
+    try { feedback = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+    catch { feedback=[{timestamp:'0:00',type:'suggestion',title:'Analysis complete',body:raw.slice(0,300),tip:'Review notes above.'}]; }
+
+    lastFeedback = feedback;
+    setStatus('', 100);
+    setTimeout(()=>{ document.getElementById('progress-bar').style.display='none'; document.getElementById('status-text').style.display='none'; }, 400);
+    renderFeedback(feedback, videoEl);
+    document.getElementById('pdf-btn').style.display = 'block';
+  } catch(err) {
+    setStatus('Error: '+err.message, 100);
+    document.getElementById('feedback-list').innerHTML = `<div style="padding:1rem;color:#FF6666;font-size:13px">Failed to analyze: ${err.message}</div>`;
+  }
+  btn.disabled=false; btn.textContent='⚡ Re-analyze';
+}
+
+function setStatus(msg, pct) {
+  document.getElementById('status-text').textContent = msg;
+  document.getElementById('progress-fill').style.width = pct+'%';
+}
+
+function renderFeedback(items, videoEl) {
+  const counts = {critical:0,suggestion:0,positive:0};
+  items.forEach(i=>{ if(counts[i.type]!==undefined) counts[i.type]++; });
+  document.getElementById('summary-bar').innerHTML = `
+    <div class="summary-bar">
+      <div class="stat red"><div class="stat-num">${counts.critical}</div><div class="stat-label">Issues</div></div>
+      <div class="stat lime"><div class="stat-num">${counts.suggestion}</div><div class="stat-label">Suggestions</div></div>
+      <div class="stat blue"><div class="stat-num">${counts.positive}</div><div class="stat-label">Strengths</div></div>
+      <div style="margin-left:auto;font-size:11px;color:var(--muted);text-align:right">Focus: <span style="color:var(--text)">${lastFocusLabel}</span></div>
+    </div>`;
+  document.getElementById('seek-hint').style.display='block';
+  const list = document.getElementById('feedback-list');
+  list.innerHTML = items.map(item=>{
+    const badgeLabel = item.type==='critical'?'Fix This':item.type==='suggestion'?'Improve':'Great!';
+    const tsSeconds = item.timestamp ? item.timestamp.split(':').reduce((a,b)=>a*60+parseFloat(b),0) : 0;
+    return `<div class="feedback-card ${item.type}" onclick="seekVideo(${tsSeconds})">
+      <div class="fc-top">
+        <span class="fc-timestamp">${item.timestamp||'0:00'}</span>
+        <span class="fc-badge badge-${item.type}">${badgeLabel}</span>
+      </div>
+      <div class="fc-title">${item.title}</div>
+      <div class="fc-body">${item.body}</div>
+      ${item.tip?`<div class="fc-tip"><strong>Drill:</strong> ${item.tip}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function seekVideo(seconds) {
+  const vids = [document.getElementById('video-preview'), document.getElementById('recorded-preview')];
+  const vid = vids.find(v=>v.style.display!=='none'&&v.src);
+  if(vid){ vid.currentTime=seconds; vid.scrollIntoView({behavior:'smooth',block:'center'}); vid.pause(); }
+}
+
+// ── PDF Export ─────────────────────────────────────────────────
+function exportPDF() {
+  if(!lastFeedback.length) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W=210, margin=18, cW=W-margin*2;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+
+  // Header bar
+  doc.setFillColor(10,10,10);
+  doc.rect(0,0,W,28,'F');
+  doc.setFillColor(204,255,0);
+  doc.rect(0,0,5,28,'F');
+  doc.setTextColor(204,255,0);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(20);
+  doc.text('ShuttleIQ', margin+2, 12);
+  doc.setTextColor(180,180,180);
+  doc.setFontSize(9);
+  doc.setFont('helvetica','normal');
+  doc.text('AI Badminton Coaching Report', margin+2, 20);
+  doc.setTextColor(120,120,120);
+  doc.text(dateStr, W-margin, 12, {align:'right'});
+  doc.text(`Focus: ${lastFocusLabel}`, W-margin, 20, {align:'right'});
+
+  let y = 38;
+
+  // Summary cards row
+  const counts = {critical:0,suggestion:0,positive:0};
+  lastFeedback.forEach(i=>{ if(counts[i.type]!==undefined) counts[i.type]++; });
+  const cardW = (cW-8)/3;
+  const cards = [
+    {label:'Issues Found',val:counts.critical,r:220,g:80,b:80},
+    {label:'Suggestions',val:counts.suggestion,r:180,g:220,b:0},
+    {label:'Strengths',val:counts.positive,r:80,g:160,b:255}
+  ];
+  cards.forEach((c,i)=>{
+    const cx = margin + i*(cardW+4);
+    doc.setFillColor(245,245,245);
+    doc.roundedRect(cx,y,cardW,18,2,2,'F');
+    doc.setTextColor(c.r,c.g,c.b);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(18);
+    doc.text(String(c.val), cx+cardW/2, y+11, {align:'center'});
+    doc.setTextColor(100,100,100);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7);
+    doc.text(c.label.toUpperCase(), cx+cardW/2, y+16, {align:'center'});
+  });
+  y += 26;
+
+  // Section heading
+  doc.setFillColor(240,240,240);
+  doc.rect(margin,y,cW,7,'F');
+  doc.setTextColor(60,60,60);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('DETAILED COACHING FEEDBACK', margin+3, y+5);
+  y += 13;
+
+  // Feedback cards
+  lastFeedback.forEach((item, idx) => {
+    const typeColors = {
+      critical:[220,60,60], suggestion:[150,200,0], positive:[60,140,220]
+    };
+    const typeLabels = { critical:'FIX THIS', suggestion:'IMPROVE', positive:'STRENGTH' };
+    const col = typeColors[item.type] || [150,150,150];
+
+    // Estimate height needed
+    const bodyLines = doc.splitTextToSize(item.body||'', cW-20);
+    const tipLines = item.tip ? doc.splitTextToSize('Drill: ' + item.tip, cW-26) : [];
+    const cardH = 8 + bodyLines.length*4.5 + (tipLines.length ? tipLines.length*4.5+8 : 0) + 10;
+
+    if(y + cardH > 270) { doc.addPage(); y=18; }
+
+    // Card background
+    doc.setFillColor(252,252,252);
+    doc.setDrawColor(220,220,220);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(margin, y, cW, cardH, 2, 2, 'FD');
+
+    // Left color accent
+    doc.setFillColor(...col);
+    doc.roundedRect(margin, y, 3, cardH, 1, 1, 'F');
+
+    // Timestamp badge
+    doc.setFillColor(240,240,240);
+    doc.roundedRect(margin+7, y+4, 16, 6, 1, 1, 'F');
+    doc.setTextColor(80,80,80);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(7);
+    doc.text(item.timestamp||'0:00', margin+15, y+8.5, {align:'center'});
+
+    // Type badge
+    doc.setFillColor(...col.map(v=>Math.min(255,v+160)));
+    doc.roundedRect(margin+26, y+4, 20, 6, 1, 1, 'F');
+    doc.setTextColor(...col.map(v=>Math.max(0,v-40)));
+    doc.setFontSize(6);
+    doc.text(typeLabels[item.type]||'NOTE', margin+36, y+8.5, {align:'center'});
+
+    // Title
+    doc.setTextColor(30,30,30);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.text(item.title||'', margin+50, y+9);
+
+    let iy = y+14;
+
+    // Body
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.setTextColor(80,80,80);
+    bodyLines.forEach(line => { doc.text(line, margin+8, iy); iy+=4.5; });
+
+    // Tip box
+    if(tipLines.length) {
+      iy += 2;
+      doc.setFillColor(248,255,230);
+      doc.setDrawColor(180,210,0);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(margin+8, iy-3, cW-16, tipLines.length*4.5+5, 1, 1, 'FD');
+      doc.setTextColor(100,130,0);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(7);
+      tipLines.forEach((line,li) => {
+        if(li===0) doc.text(line, margin+11, iy+1.5);
+        else { doc.setFont('helvetica','normal'); doc.text(line, margin+11, iy+1.5); }
+        iy+=4.5;
+      });
+    }
+    y += cardH + 5;
+  });
+
+  // Footer
+  const pages = doc.internal.getNumberOfPages();
+  for(let p=1;p<=pages;p++){
+    doc.setPage(p);
+    doc.setFillColor(245,245,245);
+    doc.rect(0,284,W,13,'F');
+    doc.setTextColor(160,160,160);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7);
+    doc.text('Generated by ShuttleIQ · AI Badminton Coaching', margin, 291);
+    doc.text(`Page ${p} of ${pages}`, W-margin, 291, {align:'right'});
+  }
+
+  doc.save(`ShuttleIQ_Report_${now.toISOString().slice(0,10)}.pdf`);
+}
+</script>
+</body>
+</html>

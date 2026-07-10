@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#070709">
+  <title>ShuttleIQ Team Edition</title>
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // Premium Global Error Catching system for on-court diagnostics
+    window.onerror = function(message, source, lineno, colno, error) {
+      const container = document.getElementById('toast-container');
+      if (container) {
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-error';
+        toast.style.minWidth = '300px';
+        toast.innerHTML = '<span>⚠️</span> <span><strong>System Error:</strong> ' + message + ' (' + lineno + ':' + colno + ')</span>';
+        container.appendChild(toast);
+      }
+      console.error("ShuttleIQ Diagnostic Error: ", message, " at ", source, ":", lineno);
+      return false;
+    };
+  </script>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M19.5 4.5A2.12 2.12 0 0 0 16.5 1.5L7 11a6 6 0 0 0-1.5 2.5L4 18l4.5-1.5A6 6 0 0 0 11 15ZM5.5 19.5l-1-4 4-1Z"/>
+            <circle cx="20" cy="4" r="2.5"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <span class="brand-name">Shuttle<span>IQ</span></span>
+          <span class="brand-sub">Team Edition</span>
+        </div>
+      </div>
+      <nav>
+        <button class="nav-btn active" id="nav-roster" onclick="showPage('roster')">
+          <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+          Tryouts & Team
+        </button>
+        <button class="nav-btn" id="nav-lineups" onclick="showPage('lineups')">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.53c-.26-.81-1-1.4-1.9-1.4h-1v-3c0-.55-.45-1-1-1h-6v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.4z"/></svg>
+          Court Lineups
+        </button>
+        <button class="nav-btn" id="nav-insights" onclick="showPage('insights')">
+          <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+          Player Insights
+        </button>
+        <button class="nav-btn" id="nav-analyze" onclick="showPage('analyze')">
+          <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4zM14 13h-3v3H9v-3H6v-2h3V8h2v3h3v2z"/></svg>
+          Video Analyzer
+        </button>
+        <button class="nav-btn" id="nav-compare" onclick="showPage('compare')">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
+          Pro Compare
+        </button>
+      </nav>
+    </header>
+
+    <!-- Page: Roster & Tryouts -->
+    <div class="page active" id="page-roster">
+      <div class="panel">
+        <div class="tab-bar">
+          <button class="tab-btn active" id="roster-subtab-list" onclick="switchRosterSubTab('list')">Player Leaderboard</button>
+          <button class="tab-btn" id="roster-subtab-drill" onclick="switchRosterSubTab('drill')">Tryout Scorecard</button>
+        </div>
+        
+        <!-- Subtab: Player Leaderboard -->
+        <div class="tab-content active" id="subtab-list">
+          <div class="panel-header" style="border-bottom: none; padding: 0 0 16px 0;">
+            <div style="display:flex; gap:10px; width: 100%; flex-wrap:wrap;">
+              <input type="text" id="roster-search" class="text-input" style="max-width: 280px;" placeholder="Search players by name..." oninput="filterRosterTable()">
+              <div style="margin-left: auto; display: flex; gap: 8px;">
+                <button class="btn btn-primary" onclick="openAddPlayerModal()">
+                  <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                  Add Player
+                </button>
+                <input type="file" id="bulk-import" style="display:none;" accept="application/json" onchange="importTeamData(event)">
+                <button class="btn btn-secondary" onclick="document.getElementById('bulk-import').click()">Import Team</button>
+                <button class="btn btn-secondary" onclick="exportTeamData()">Export Team</button>
+                <button class="btn btn-danger btn-sm" onclick="clearTeamData()">Reset</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="table-wrapper">
+            <table id="leaderboard-table">
+              <thead>
+                <tr>
+                  <th onclick="sortLeaderboard('name')" id="th-name">Player Name</th>
+                  <th onclick="sortLeaderboard('hand')" id="th-hand">Hand</th>
+                  <th onclick="sortLeaderboard('style')" id="th-style">Style</th>
+                  <th onclick="sortLeaderboard('overall')" id="th-overall" class="sort-active">Overall</th>
+                  <th onclick="sortLeaderboard('footwork')" id="th-footwork">Footwork</th>
+                  <th onclick="sortLeaderboard('smash')" id="th-smash">Smash</th>
+                  <th onclick="sortLeaderboard('serve')" id="th-serve">Serve</th>
+                  <th onclick="sortLeaderboard('defense')" id="th-defense">Defense</th>
+                  <th onclick="sortLeaderboard('net')" id="th-net">Net</th>
+                  <th onclick="sortLeaderboard('consistency')" id="th-consistency">Consistency</th>
+                  <th style="width: 60px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-tbody">
+                <!-- Loaded dynamically by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Subtab: Drill Scorer Card -->
+        <div class="tab-content" id="subtab-drill">
+          <div class="scorer-layout">
+            <div style="max-width: 480px; margin: 0 auto; width: 100%;">
+              <h3 class="panel-title" style="margin-bottom: 16px; font-size: 18px;">Tryout Drill Grader</h3>
+              
+              <div class="form-group">
+                <label for="drill-player-select">Select Player to Grade</label>
+                <select id="drill-player-select" onchange="loadPlayerDrillValues()">
+                  <!-- Loaded dynamically by JS -->
+                </select>
+              </div>
+
+              <div class="panel" style="background: var(--surface-medium); padding: 16px; border-color: var(--border-bright);">
+                <div class="form-group">
+                  <label>Footwork & Speed Drill (1-10)</label>
+                  <div class="range-container">
+                    <input type="range" min="1" max="10" value="7" id="drill-footwork" oninput="updateRangeLabel(this, 'drill-footwork-val')">
+                    <span class="range-val" id="drill-footwork-val">7</span>
+                  </div>
+                  <div class="field-help" style="margin-top:2px;">Evaluates split-step, lateral court speed, and forward lunge recovery.</div>
+                </div>
+
+                <div class="form-group">
+                  <label>Smash Accuracy & Power (1-10)</label>
+                  <div class="range-container">
+                    <input type="range" min="1" max="10" value="7" id="drill-smash" oninput="updateRangeLabel(this, 'drill-smash-val')">
+                    <span class="range-val" id="drill-smash-val">7</span>
+                  </div>
+                  <div class="field-help" style="margin-top:2px;">Evaluates jump timing, smash downward angle, and consistency.</div>
+                </div>
+
+                <div class="form-group">
+                  <label>Service Precision (1-10)</label>
+                  <div class="range-container">
+                    <input type="range" min="1" max="10" value="7" id="drill-serve" oninput="updateRangeLabel(this, 'drill-serve-val')">
+                    <span class="range-val" id="drill-serve-val">7</span>
+                  </div>
+                  <div class="field-help" style="margin-top:2px;">Evaluates low short-serve trajectory, and flick serve surprise.</div>
+                </div>
+
+                <div class="form-group">
+                  <label>Defensive Reflexes & Blocks (1-10)</label>
+                  <div class="range-container">
+                    <input type="range" min="1" max="10" value="7" id="drill-defense" oninput="updateRangeLabel(this, 'drill-defense-val')">
+                    <span class="range-val" id="drill-defense-val">7</span>
+                  </div>
+                  <div class="field-help" style="margin-top:2px;">Evaluates drive blocks, defensive lifts, and smash retrieval depth.</div>
+                </div>
+
+                <div class="form-group">
+                  <label>Net Touch & Deception (1-10)</label>
+                  <div class="range-container">
+                    <input type="range" min="1" max="10" value="7" id="drill-net" oninput="updateRangeLabel(this, 'drill-net-val')">
+                    <span class="range-val" id="drill-net-val">7</span>
+                  </div>
+                  <div class="field-help" style="margin-top:2px;">Evaluates tight net rolls, cross-court net tumble, and push deceptions.</div>
+                </div>
+
+                <div class="form-group">
+                  <label>Rally Consistency (1-10)</label>
+                  <div class="range-container">
+                    <input type="range" min="1" max="10" value="7" id="drill-consistency" oninput="updateRangeLabel(this, 'drill-consistency-val')">
+                    <span class="range-val" id="drill-consistency-val">7</span>
+                  </div>
+                  <div class="field-help" style="margin-top:2px;">Evaluates unforced errors rate under fatigue during multi-shot rallies.</div>
+                </div>
+              </div>
+              
+              <button class="btn btn-primary" style="width:100%;" onclick="submitDrillGrades()">
+                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                Record Tryout Evaluation
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page: Court Lineups -->
+    <div class="page" id="page-lineups">
+      <div class="grid-aside">
+        
+        <!-- Interactive 2D Badminton Court -->
+        <div class="panel glow-lime" style="padding: 20px;">
+          <div class="panel-header" style="border:none; padding: 0 0 16px 0;">
+            <h3 class="panel-title"><span>Interactive</span> Court Planner</h3>
+            <button class="btn btn-secondary btn-sm" onclick="clearLineup()">Clear Lineup</button>
+          </div>
+          
+          <div class="court-container">
+            <svg class="court-svg" viewBox="0 0 300 510">
+              <!-- Outer boundary -->
+              <rect x="10" y="10" width="280" height="490" fill="none" class="court-line" stroke-width="3"></rect>
+              <!-- Center Line -->
+              <line x1="150" y1="10" x2="150" y2="490" class="court-line"></line>
+              <!-- Short Service Lines -->
+              <line x1="10" y1="185" x2="290" y2="185" class="court-line"></line>
+              <line x1="10" y1="325" x2="290" y2="325" class="court-line"></line>
+              <!-- Center Net -->
+              <line x1="10" y1="255" x2="290" y2="255" class="court-line-net"></line>
+              <!-- Doubles Side Lines -->
+              <line x1="28" y1="10" x2="28" y2="490" class="court-line"></line>
+              <line x1="272" y1="10" x2="272" y2="490" class="court-line"></line>
+              <!-- Long Service Lines for Doubles -->
+              <line x1="10" y1="46" x2="290" y2="46" class="court-line"></line>
+              <line x1="10" y1="464" x2="290" y2="464" class="court-line"></line>
+            </svg>
+
+            <!-- Position slots as absolute elements overlying the SVG -->
+            <!-- Team 2 / Top Half -->
+            <div class="court-slot occupied" id="slot-d2a" onclick="openAssignModal('d2a')">
+              <div class="court-slot-circle" id="circle-d2a">?</div>
+              <span class="court-slot-label" id="label-d2a">D2 Back (A)</span>
+            </div>
+            <div class="court-slot occupied" id="slot-d2b" onclick="openAssignModal('d2b')">
+              <div class="court-slot-circle" id="circle-d2b">?</div>
+              <span class="court-slot-label" id="label-d2b">D2 Front (P)</span>
+            </div>
+            
+            <div class="court-slot" id="slot-s2" onclick="openAssignModal('s2')" style="display:none;">
+              <div class="court-slot-circle" id="circle-s2">?</div>
+              <span class="court-slot-label" id="label-s2">Singles 2</span>
+            </div>
+
+            <!-- Team 1 / Bottom Half -->
+            <div class="court-slot occupied" id="slot-d1b" onclick="openAssignModal('d1b')">
+              <div class="court-slot-circle" id="circle-d1b">?</div>
+              <span class="court-slot-label" id="label-d1b">D1 Front (P)</span>
+            </div>
+            <div class="court-slot occupied" id="slot-d1a" onclick="openAssignModal('d1a')">
+              <div class="court-slot-circle" id="circle-d1a">?</div>
+              <span class="court-slot-label" id="label-d1a">D1 Back (A)</span>
+            </div>
+            
+            <div class="court-slot" id="slot-s1" onclick="openAssignModal('s1')" style="display:none;">
+              <div class="court-slot-circle" id="circle-s1">?</div>
+              <span class="court-slot-label" id="label-s1">Singles 1</span>
+            </div>
+          </div>
+          
+          <div style="display:flex; justify-content:center; gap:12px; margin-top:20px;">
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-doubles" onclick="toggleCourtFormat('doubles')" style="border-color:var(--lime);">Doubles Mode</button>
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-singles" onclick="toggleCourtFormat('singles')">Singles Mode</button>
+          </div>
+        </div>
+
+        <!-- Real-time Team Chemistry & Synergy Index -->
+        <div style="display:flex; flex-direction:column; gap:20px;">
+          <div class="panel" style="padding:20px;">
+            <h3 class="panel-title" style="margin-bottom: 12px;">Doubles 1 Pair Synergy</h3>
+            <div class="chemistry-card">
+              <div class="chem-title-row">
+                <span class="player-name" id="d1-pair-names">Assign players...</span>
+                <span class="chem-badge" id="d1-chem-pct">0%</span>
+              </div>
+              <div class="chem-bar-wrap">
+                <div class="chem-bar-fill" id="d1-chem-bar" style="width: 0%;"></div>
+              </div>
+              <p class="chem-feedback" id="d1-chem-desc">Assign players to both Front Court (Playmaker) and Back Court (Attacker) spots to evaluate their complementary synergy.</p>
+            </div>
+          </div>
+
+          <div class="panel" style="padding:20px;">
+            <h3 class="panel-title" style="margin-bottom: 12px;">Doubles 2 Pair Synergy</h3>
+            <div class="chemistry-card" style="border-color: var(--cyan-border); background: rgba(0, 229, 255, 0.01);">
+              <div class="chem-title-row">
+                <span class="player-name" id="d2-pair-names">Assign players...</span>
+                <span class="chem-badge" id="d2-chem-pct" style="color: var(--cyan);">0%</span>
+              </div>
+              <div class="chem-bar-wrap">
+                <div class="chem-bar-fill" id="d2-chem-bar" style="width: 0%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan);"></div>
+              </div>
+              <p class="chem-feedback" id="d2-chem-desc">Assign players to both Front Court (Playmaker) and Back Court (Attacker) spots to evaluate their complementary synergy.</p>
+            </div>
+          </div>
+          
+          <div class="panel" style="padding:20px; display:none;" id="panel-singles-chem">
+            <h3 class="panel-title" style="margin-bottom: 12px;">Singles Performance Estimate</h3>
+            <div class="chemistry-card" style="border-color: var(--border-bright); background: transparent;">
+              <p class="chem-feedback" id="singles-chem-desc">Assign players to Singles 1 & Singles 2 spots to evaluate singles ratings.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Page: Player Insights -->
+    <div class="page" id="page-insights">
+      <div class="panel" style="padding:20px;">
+        <div class="panel-header" style="border:none; padding: 0 0 20px 0;">
+          <div style="display:flex; align-items:center; gap:16px; width: 100%; flex-wrap:wrap;">
+            <h3 class="panel-title" style="font-size: 18px;">Select Player to Profile</h3>
+            <select id="insights-player-select" style="max-width: 240px;" onchange="loadPlayerInsights()"></select>
+          </div>
+        </div>
+
+        <div id="insights-empty" class="session-empty">
+          <div class="big">📋</div>
+          <p>No players added to the team roster yet. Go to Tryouts & Team to add players.</p>
+        </div>
+
+        <div id="insights-body" style="display:none;">
+          <div class="insights-grid">
+            
+            <!-- Skill Radar Matrix -->
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <div class="radar-wrapper">
+                <svg class="radar-svg" viewBox="-180 -180 360 360" id="radar-chart-svg">
+                  <!-- Dynamically rendered by JS -->
+                </svg>
+              </div>
+              <div class="field-help" style="text-align:center;">This visual profile charts the player's core badminton skills. Points extending outward reflect strengths.</div>
+            </div>
+
+            <!-- Position Recommendations & Custom Coaching Tips -->
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <h4 class="panel-title" style="font-size:13px; color: var(--text-main); margin-bottom: 4px;">Optimal Positions Matching</h4>
+              
+              <div class="style-recommendation" id="rec-singles">
+                <div class="style-rec-info">
+                  <div class="style-rec-title">Men's/Women's Singles</div>
+                  <div class="style-rec-desc">Optimal for highly consistent players with top footwork, deep clears, and stellar stamina.</div>
+                </div>
+                <div class="style-rec-match" id="rec-singles-pct">0%</div>
+              </div>
+
+              <div class="style-recommendation" id="rec-front">
+                <div class="style-rec-info">
+                  <div class="style-rec-title">Doubles Front Court (Playmaker)</div>
+                  <div class="style-rec-desc">Optimal for net touch specialists, with swift drive-blocks and quiet low serves.</div>
+                </div>
+                <div class="style-rec-match" id="rec-front-pct">0%</div>
+              </div>
+
+              <div class="style-recommendation" id="rec-back">
+                <div class="style-rec-info">
+                  <div class="style-rec-title">Doubles Back Court (Attacker)</div>
+                  <div class="style-rec-desc">Optimal for offensive heavy-hitters with high smash speeds and solid recovery.</div>
+                </div>
+                <div class="style-rec-match" id="rec-back-pct">0%</div>
+              </div>
+
+              <div class="panel" style="background: rgba(255,255,255,0.01); border-color: var(--border-bright); padding:16px; margin-top:8px;">
+                <h4 class="panel-title" style="font-size:12px; margin-bottom: 8px; color: var(--lime);">Custom Coaching Action Plan</h4>
+                <div class="chem-feedback" style="color:var(--text-main); font-weight: 500; margin-bottom: 4px;" id="insight-weak-title">Focus Area: -</div>
+                <p class="chem-feedback" id="insight-weak-drill">-</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Performance Trends & Historical Evaluations -->
+          <div class="grid-2" style="margin-top:24px;">
+            <div class="panel" style="padding:16px;">
+              <h3 class="panel-title" style="margin-bottom:12px;">Evaluation History Chart</h3>
+              <div style="height: 200px; width: 100%;">
+                <canvas id="player-trend-chart" class="chart"></canvas>
+              </div>
+            </div>
+
+            <div class="panel" style="padding:16px;">
+              <h3 class="panel-title" style="margin-bottom:12px;">Past Assessment Sessions</h3>
+              <div class="table-wrapper" style="max-height: 200px; overflow-y:auto;">
+                <table style="font-size: 12px;">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Focus / Type</th>
+                      <th>Rating</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="insights-sessions-tbody">
+                    <!-- Loaded dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page: Video Analyzer -->
+    <div class="page" id="page-analyze">
+      <div class="grid-aside">
+        <div class="panel">
+          <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchAnalyzeTab('upload', this)">Video File</button>
+            <button class="tab-btn" onclick="switchAnalyzeTab('camera', this)">Live Recorder</button>
+          </div>
+          
+          <!-- Upload subtab -->
+          <div class="tab-content active" id="analyze-tab-upload">
+            <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+              <div class="drop-icon">🎬</div>
+              <div class="drop-h">Drop video here</div>
+              <div class="drop-p">MP4, MOV, WebM</div>
+              <input type="file" id="file-input" accept="video/*">
+            </div>
+            <video class="preview" id="video-preview" style="width:100%; border-radius:8px; background:#000; display:none; margin-top:8px; max-height:220px; object-fit:contain;" controls></video>
+            <div class="vid-meta" id="video-info" style="display:none; margin-top:8px; font-size:12px; color:var(--text-muted);">
+              <span id="vid-name" style="color:var(--text-main); font-weight:500;">-</span> · <span id="vid-dur">-</span>
+            </div>
+            
+            <div class="settings" id="settings-upload" style="display:none; margin-top: 12px;">
+              <div class="setting-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Frames / min</span>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="range" min="2" max="12" value="6" id="fpm-slider" step="1" oninput="document.getElementById('fpm-val').textContent=this.value">
+                  <span class="setting-value range-val" id="fpm-val">6</span>
+                </div>
+              </div>
+              <div class="setting-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Focus area</span>
+                <select id="focus-select" style="max-width:160px;">
+                  <option value="overall">Overall Technique</option>
+                  <option value="footwork">Footwork & Movement</option>
+                  <option value="smash">Smash Execution</option>
+                  <option value="serve">Service Consistency</option>
+                  <option value="clear">Overhead Clear</option>
+                  <option value="net">Net Touch & Play</option>
+                </select>
+              </div>
+              <div class="setting-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Session Label</span>
+                <input class="text-input" style="width:160px;" type="text" id="session-label" placeholder="e.g. Tryouts drill">
+              </div>
+              <div class="setting-row session-player-bind">
+                <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Assign to Player</span>
+                <select id="analyze-player-select" style="max-width:160px;">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="analyze-btn" style="width:100%; display:none; margin-top:12px;" onclick="runAnalysis('upload')">Run Technical AI Analysis</button>
+          </div>
+
+          <!-- Camera subtab -->
+          <div class="tab-content" id="analyze-tab-camera">
+            <div id="cam-placeholder" style="border: 2px dashed rgba(204, 255, 0, 0.2); border-radius: var(--radius-lg); padding: 40px 20px; text-align: center;">
+              <div style="font-size:42px; margin-bottom:12px; opacity:0.7;">📱</div>
+              <div class="drop-h">Live Video Capture</div>
+              <div class="drop-p" style="margin-bottom:16px;">Evaluate players directly on court.</div>
+              <button class="btn btn-secondary btn-sm" onclick="startCamera()">Enable Camera Stream</button>
+            </div>
+            <video id="cam-live" style="width:100%; border-radius:8px; background:#000; display:none; margin-top:8px; max-height:220px; object-fit:cover;" autoplay muted playsinline></video>
+            <div class="cam-controls" id="cam-controls" style="display:none; gap:8px; margin-top:10px;">
+              <button class="btn btn-danger btn-sm" id="rec-btn" style="flex:1;" onclick="toggleRecord()">Record Drill</button>
+              <button class="btn btn-secondary btn-sm" onclick="stopCamera()">Close Camera</button>
+            </div>
+            <div class="rec-timer" id="rec-timer" style="display:none; text-align:center; color:var(--critical); font-family:var(--font-head); font-weight:700; margin-top:6px;">0:00</div>
+            <video id="cam-recorded" style="width:100%; border-radius:8px; background:#000; display:none; margin-top:8px; max-height:220px; object-fit:contain;" controls></video>
+            
+            <div class="settings" id="settings-camera" style="display:none; margin-top:12px;">
+              <div class="setting-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Frames / min</span>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="range" min="2" max="12" value="6" id="fpm-slider-cam" step="1" oninput="document.getElementById('fpm-val-cam').textContent=this.value">
+                  <span class="setting-value range-val" id="fpm-val-cam">6</span>
+                </div>
+              </div>
+              <div class="setting-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Focus area</span>
+                <select id="focus-select-cam" style="max-width:160px;">
+                  <option value="overall">Overall Technique</option>
+                  <option value="footwork">Footwork & Movement</option>
+                  <option value="smash">Smash Execution</option>
+                  <option value="serve">Service Consistency</option>
+                  <option value="clear">Overhead Clear</option>
+                  <option value="net">Net Touch & Play</option>
+                </select>
+              </div>
+              <div class="setting-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Session Label</span>
+                <input class="text-input" style="width:160px;" type="text" id="session-label-cam" placeholder="e.g. Tryouts drill">
+              </div>
+              <div class="setting-row session-player-bind">
+                <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Assign to Player</span>
+                <select id="analyze-player-select-cam" style="max-width:160px;">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="analyze-cam-btn" style="width:100%; display:none; margin-top:12px;" onclick="runAnalysis('camera')">Analyze Recording</button>
+          </div>
+        </div>
+
+        <!-- Vision API key panel -->
+        <div class="panel" style="padding:20px;">
+          <h3 class="panel-title" style="margin-bottom:12px;">Claude Vision Settings</h3>
+          <div class="stack" style="display:flex; flex-direction:column; gap:12px;">
+            <input class="text-input" type="password" id="api-key" placeholder="Anthropic API key">
+            <div class="setting-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0;">
+              <span class="setting-label" style="font-size:12px; color:var(--text-muted);">Vision Model</span>
+              <select id="model-select" style="max-width:160px;">
+                <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet (Fastest)</option>
+                <option value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
+              </select>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="toggleKeyVisibility()">Show / hide key</button>
+            <div class="field-help">Secure client-side requests: keys never touch external servers besides direct Anthropic API gateways.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coaching Analysis Result Panel -->
+      <div class="panel" id="results-panel" style="display:none; margin-top:20px;">
+        <div class="panel-header">
+          <span class="panel-title">AI Video Coaching Report & Stats</span>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span id="frame-count" style="font-size:10px; color:var(--text-muted);"></span>
+            <button class="btn btn-secondary btn-sm" id="pdf-btn" onclick="exportPDF()" style="display:none;">Export to PDF</button>
+          </div>
+        </div>
+        <div class="progress-bar" id="progress-bar" style="height:3px; background:var(--surface-light); border-radius:2px; overflow:hidden; display:none;">
+          <div class="progress-fill" id="progress-fill" style="height:100%; background:var(--lime); width:0%; transition:width .3s;"></div>
+        </div>
+        <div class="status-text" id="status-text" style="padding:10px 20px; font-size:11px; color:var(--text-muted); display:none;"></div>
+        <div id="summary-bar"></div>
+        <div id="score-grid" class="score-grid" style="display:none; padding:16px;"></div>
+        <div class="seek-hint" id="seek-hint" style="display:none; font-size:11px; color:var(--text-muted); padding:0 20px 10px 20px;">Click any card below to jump to that timestamp in the video.</div>
+        <div class="feedback-list" id="feedback-list"></div>
+      </div>
+    </div>
+
+    <!-- Page: Pro Compare -->
+    <div class="page" id="page-compare">
+      <div class="panel" style="padding:20px;">
+        <div class="panel-header" style="border:none; padding: 0 0 16px 0;">
+          <div style="display:flex; align-items:center; gap:16px; width: 100%; flex-wrap:wrap;">
+            <h3 class="panel-title" style="font-size:18px;">Player Comparison Suite</h3>
+            <select id="compare-player-select" style="max-width: 240px;" onchange="selectPro(null)"></select>
+          </div>
+        </div>
+        
+        <div id="compare-empty" class="session-empty">
+          <div class="big">📋</div>
+          <p>No players added to the team roster yet. Go to Tryouts & Team to add players.</p>
+        </div>
+
+        <div id="compare-body" style="display:none;">
+          <div style="margin-bottom:16px; font-size:13px; color:var(--text-muted);">Choose a badminton professional player to benchmark your chosen roster player against:</div>
+          <div class="pro-grid" id="pro-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:12px; margin-bottom:20px;">
+            <!-- Loaded dynamically by JS -->
+          </div>
+          
+          <div class="panel" id="compare-results" style="display:none; padding:20px;">
+            <div class="panel-header" style="border-bottom: 1px solid var(--border-dim); padding: 0 0 12px 0;">
+              <span class="panel-title" id="compare-title" style="font-size:16px; color:var(--lime);"> Roster vs Professional</span>
+            </div>
+            
+            <div id="compare-chart-body" style="margin-top:16px;">
+              <!-- Side by side stats will render here -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Assignment Modal -->
+  <div class="modal-overlay" id="assign-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title" id="assign-modal-title">Assign Player</h3>
+        <button class="modal-close" onclick="closeAssignModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="assign-modal-body">
+        <!-- Roster suggestions based on fit percentage loaded dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" onclick="closeAssignModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Add Player Modal -->
+  <div class="modal-overlay" id="add-player-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Add New Player to Team</h3>
+        <button class="modal-close" onclick="closeAddPlayerModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="new-player-name">Player Full Name</label>
+          <input type="text" id="new-player-name" class="text-input" placeholder="e.g. Marcus Gideon">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="new-player-hand">Handedness</label>
+            <select id="new-player-hand">
+              <option value="Right">Right Handed</option>
+              <option value="Left">Left Handed</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="new-player-style">Preferred Style</label>
+            <select id="new-player-style">
+              <option value="Singles">Singles</option>
+              <option value="Doubles">Doubles</option>
+              <option value="All-Round">All-Rounder</option>
+            </select>
+          </div>
+        </div>
+        
+        <p style="font-size: 11px; text-transform: uppercase; color:var(--lime); margin-bottom: 8px; font-weight:700; letter-spacing: 0.5px;">Initial Tryout Skills (1-10)</p>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="init-footwork">Footwork</label>
+            <input type="number" id="init-footwork" class="text-input" min="1" max="10" value="7">
+          </div>
+          <div class="form-group">
+            <label for="init-smash">Smash</label>
+            <input type="number" id="init-smash" class="text-input" min="1" max="10" value="7">
+          </div>
+          <div class="form-group">
+            <label for="init-serve">Serve</label>
+            <input type="number" id="init-serve" class="text-input" min="1" max="10" value="7">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="init-defense">Defense</label>
+            <input type="number" id="init-defense" class="text-input" min="1" max="10" value="7">
+          </div>
+          <div class="form-group">
+            <label for="init-net">Net Play</label>
+            <input type="number" id="init-net" class="text-input" min="1" max="10" value="7">
+          </div>
+          <div class="form-group">
+            <label for="init-consistency">Consistency</label>
+            <input type="number" id="init-consistency" class="text-input" min="1" max="10" value="7">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" onclick="closeAddPlayerModal()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="createNewPlayer()">Create Player</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Alert Toast Container -->
+  <div id="toast-container"></div>
+
+  <canvas id="canvas-el" style="display:none;"></canvas>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

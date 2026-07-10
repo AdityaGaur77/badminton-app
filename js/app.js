@@ -1,0 +1,1897 @@
+/* ShuttleIQ v6 — views, routing, role gating */
+
+const VIEW = document.getElementById('view');
+const NAV = document.getElementById('topnav');
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  // date-only strings must be parsed as LOCAL dates — new Date('2026-07-12')
+  // is UTC midnight, which renders as the previous day in western timezones
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(iso);
+  return isNaN(d) ? String(iso) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function todayISO() {
+  const d = new Date(); // local, not UTC — an evening match shouldn't log as tomorrow
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/* object URLs created for video playback, revoked on navigation */
+let liveUrls = [];
+function trackUrl(url) { liveUrls.push(url); return url; }
+function revokeUrls() { liveUrls.forEach(u => URL.revokeObjectURL(u)); liveUrls = []; }
+
+/* ---------- router ---------- */
+
+const ROUTES = {
+  '': renderRoot,
+  home: renderRoot,
+  login: renderLogin,
+  coach: renderGate,
+  team: renderTeam,
+  players: renderPlayers,
+  player: renderPlayerDetail,
+  matches: renderMatches,
+  tryouts: renderTryouts,
+  rosters: renderRosters,
+  insights: renderInsights,
+  analyze: renderAnalyze,
+  compare: renderCompare,
+  drills: renderDrills,
+  settings: renderSettings,
+};
+
+const COACH_ONLY = new Set(['players', 'matches', 'tryouts', 'rosters', 'insights', 'settings']);
+const NEEDS_ROLE = new Set([...COACH_ONLY, 'analyze', 'compare', 'team', 'drills', 'player']);
+
+function parseHash() {
+  const hash = location.hash.replace(/^#\/?/, '');
+  const [path, query] = hash.split('?');
+  const [name, arg] = path.split('/');
+  return { name: name || '', arg, params: new URLSearchParams(query || '') };
+}
+
+function route() {
+  stopCamera();
+  revokeUrls();
+
+  const { name, arg, params } = parseHash();
+  const role = getRole();
+
+  if (NEEDS_ROLE.has(name) && !role) { location.hash = '#/'; return; }
+  if (COACH_ONLY.has(name) && !isCoach()) { location.hash = '#/'; return; }
+  // players may open their own profile, nobody else's
+  if (name === 'player' && !isCoach() && getStudentId() !== arg) { location.hash = '#/'; return; }
+
+  buildNav();
+  VIEW.innerHTML = '';
+  (ROUTES[name] || renderRoot)(arg, params);
+  markNav(name || 'home');
+  window.scrollTo(0, 0);
+}
+
+function renderRoot() {
+  const role = getRole();
+  if (role === 'coach') return renderDashboard();
+  if (role === 'student') return renderStudentDashboard();
+  return renderLanding();
+}
+
+/* ---------- navigation bar ---------- */
+
+function buildNav() {
+  const role = getRole();
+  const link = (k, label) => `<a data-nav="${k}" href="#/${k === 'home' ? '' : k}">${label}</a>`;
+  let links = '';
+  let right = '';
+  if (role === 'coach') {
+    links = [
+      link('home', 'Dashboard'), link('insights', 'Insights'), link('players', 'Players'),
+      link('matches', 'Matches'), link('tryouts', 'Tryouts'), link('rosters', 'Rosters'),
+      link('analyze', 'Analyze'), link('compare', 'Compare'), link('settings', 'Settings'),
+    ].join('');
+    right = `<button class="nav-role" data-logout>Log out</button>`;
+  } else if (role === 'student') {
+    links = [link('home', 'Home'), link('team', 'Team'), link('analyze', 'Analyze'), link('compare', 'Compare'), link('drills', 'Drills')].join('');
+    const me = currentStudent();
+    right = `<button class="nav-role" data-logout>${me ? esc(me.name.split(' ')[0]) + ' · ' : ''}Sign out</button>`;
+  } else {
+    right = `<a class="nav-role" style="text-decoration:none" href="#/login">Log in</a>`;
+  }
+  NAV.innerHTML = `<a class="logo" href="#/"><span class="mark">◆</span> ShuttleIQ</a>${links}<span class="nav-spacer"></span>${right}`;
+  NAV.querySelector('[data-logout]')?.addEventListener('click', logout);
+}
+
+function markNav(name) {
+  NAV.querySelectorAll('a[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === name));
+}
+
+function logout() { setRole(null); location.hash = '#/'; route(); }
+
+/* ---------- shared UI builders ---------- */
+
+function skillBars(profile) {
+  return SKILLS.map(s => {
+    const v = profile[s];
+    return `<div class="bar-row">
+      <span class="bar-label">${SKILL_LABELS[s]}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${v ?? 0}%"></span></span>
+      <span class="bar-val">${v ?? '—'}</span>
+    </div>`;
+  }).join('');
+}
+
+function wlDots(playerId, n = 8) {
+  const ms = playerMatches(playerId).slice(0, n).reverse(); // oldest -> newest
+  if (!ms.length) return '<span class="muted small">no matches</span>';
+  return `<span class="wl-dots">${ms.map(m => `<i class="${m.result === 'W' ? 'w' : 'l'}" title="${esc(m.result)} vs ${esc(m.opponent)}"></i>`).join('')}</span>`;
+}
+
+function trendArrow(form) {
+  if (!form) return '<span class="trend-flat">—</span>';
+  if (form.trend === 'up') return '<span class="trend-up" title="Trending up">▲</span>';
+  if (form.trend === 'down') return '<span class="trend-down" title="Trending down">▼</span>';
+  return '<span class="trend-flat" title="Steady">—</span>';
+}
+
+function resultChip(r) {
+  return r === 'W' ? '<span class="chip chip-w">W</span>' : '<span class="chip chip-l">L</span>';
+}
+
+function ratingRow(key, label, value = 0) {
+  const dots = [1, 2, 3, 4, 5].map(v =>
+    `<button type="button" data-v="${v}" class="${v <= value ? 'on' : ''}" aria-label="${label} ${v}"></button>`).join('');
+  return `<div class="rate-row" data-skill="${key}" data-value="${value}">
+    <span class="rate-label">${label}</span><span class="rate-dots">${dots}</span>
+  </div>`;
+}
+
+/* tap a dot to set 1-5; tapping the current value clears to 0 */
+function wireRatingRows(container, onChange) {
+  container.querySelectorAll('.rate-row').forEach(row => {
+    row.querySelectorAll('.rate-dots button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const v = Number(btn.dataset.v);
+        const cur = Number(row.dataset.value);
+        const next = v === cur ? 0 : v;
+        row.dataset.value = next;
+        row.querySelectorAll('.rate-dots button').forEach(b =>
+          b.classList.toggle('on', Number(b.dataset.v) <= next));
+        if (onChange) onChange(row.dataset.skill, next);
+      });
+    });
+  });
+}
+
+function readRatings(container) {
+  const out = {};
+  container.querySelectorAll('.rate-row').forEach(row => {
+    const v = Number(row.dataset.value);
+    if (v > 0) out[row.dataset.skill] = v;
+  });
+  return out;
+}
+
+function playerOptions(selectedId, { statuses = ['roster'] } = {}) {
+  return state.players
+    .filter(p => statuses.includes(p.status))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}${p.status === 'tryout' ? ' (tryout)' : ''}</option>`)
+    .join('');
+}
+
+function playerLink(id) {
+  const p = getPlayer(id);
+  if (!p) return 'Unknown';
+  return isCoach() || getStudentId() === id
+    ? `<a class="player-link" href="#/player/${id}">${esc(p.name)}</a>`
+    : `<span class="player-link">${esc(p.name)}</span>`;
+}
+
+/* ---------- landing / login / coach gate ---------- */
+
+function renderLanding() {
+  VIEW.innerHTML = `
+  <div class="landing">
+    <div class="landing-badge">◆</div>
+    <h1>ShuttleIQ</h1>
+    <p class="lead">Film your game and get AI coaching. Score tryouts, track every player's form, and build lineups — all saved on this device.</p>
+    <div class="btn-row center">
+      <a class="btn btn-primary btn-lg" href="#/login">Enter as player</a>
+      <a class="btn btn-lg" href="#/coach">Coach login</a>
+    </div>
+    <div class="grid3 landing-feats">
+      <div class="card"><h3>AI game analysis</h3><p>Record a minute of play and get scored, timestamped feedback — or compare yourself with a pro.</p></div>
+      <div class="card"><h3>Tryout scouting</h3><p>Score prospects drill by drill, log their matches, and rank them live on the tryout board.</p></div>
+      <div class="card"><h3>Form & rosters</h3><p>Win-rate trends, position fit, and one-click lineup suggestions from real match data.</p></div>
+    </div>
+  </div>`;
+}
+
+function renderLogin() {
+  if (getRole()) { location.hash = '#/'; return; }
+  const roster = state.players.filter(p => p.status === 'roster');
+  VIEW.innerHTML = `
+  <div class="gate">
+    <div class="card">
+      <h2>Who are you?</h2>
+      ${roster.length ? `
+        <label>Pick your name
+          <select id="login-player">${playerOptions(null)}</select>
+        </label>
+        <div class="btn-row"><button class="btn btn-primary" id="login-go">Enter as player</button></div>
+        <hr>` : `<p class="muted small">No roster on this device yet — you can still explore as a guest.</p>`}
+      <div class="btn-row">
+        <button class="btn" id="login-guest">Continue as guest</button>
+        <a class="btn" href="#/coach">I'm the coach</a>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('login-go')?.addEventListener('click', () => {
+    setRole('student');
+    setStudentId(document.getElementById('login-player').value);
+    location.hash = '#/';
+  });
+  document.getElementById('login-guest').addEventListener('click', () => {
+    setRole('student');
+    setStudentId(null);
+    location.hash = '#/';
+  });
+}
+
+function renderGate() {
+  if (isCoach()) { location.hash = '#/'; return; }
+  const firstRun = !coachPassIsSet();
+  VIEW.innerHTML = `
+  <div class="gate">
+    <div class="card">
+      <h2>${firstRun ? 'Set up coach access' : 'Coach login'}</h2>
+      ${firstRun
+        ? `<p class="muted small">Create a passcode (4+ digits). It only protects the coach tools on this device.</p>
+           <label>Passcode<input type="password" id="gate-pass" inputmode="numeric" autocomplete="new-password"></label>
+           <label style="margin-top:8px">Repeat it<input type="password" id="gate-pass2" inputmode="numeric" autocomplete="new-password"></label>`
+        : `<label>Passcode<input type="password" id="gate-pass" inputmode="numeric" autocomplete="current-password"></label>`}
+      <div id="gate-err" class="small" style="color:var(--loss); min-height:18px; margin-top:6px"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="gate-go">${firstRun ? 'Create & enter' : 'Enter'}</button>
+        <a class="btn" href="#/">Back</a>
+      </div>
+      ${firstRun ? '' : `<p class="muted small">Forgot it? Clear this site's browser data to start over (this erases team data too).</p>`}
+    </div>
+  </div>`;
+  const err = document.getElementById('gate-err');
+  const go = () => {
+    const code = document.getElementById('gate-pass').value.trim();
+    if (firstRun) {
+      const code2 = document.getElementById('gate-pass2').value.trim();
+      if (code.length < 4) { err.textContent = 'Use at least 4 digits.'; return; }
+      if (code !== code2) { err.textContent = 'Passcodes don\'t match.'; return; }
+      setCoachPass(code);
+      setRole('coach');
+      location.hash = '#/';
+    } else if (checkCoachPass(code)) {
+      setRole('coach');
+      location.hash = '#/';
+    } else {
+      err.textContent = 'Wrong passcode.';
+    }
+  };
+  document.getElementById('gate-go').addEventListener('click', go);
+  VIEW.querySelectorAll('input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }));
+  document.getElementById('gate-pass').focus();
+}
+
+/* ---------- coach dashboard ---------- */
+
+function renderDashboard() {
+  const roster = state.players.filter(p => p.status === 'roster');
+  const tryouts = state.players.filter(p => p.status === 'tryout');
+
+  if (!state.players.length) {
+    VIEW.innerHTML = `
+    <div class="empty" style="margin-top:6vh">
+      <h3>Welcome, coach</h3>
+      <p>No team on this device yet. Add players, run a tryout, or load sample data to explore every screen.</p>
+      <div class="btn-row center">
+        <a class="btn btn-primary" href="#/players">Add players</a>
+        <a class="btn" href="#/tryouts">Start tryouts</a>
+        <button class="btn" id="dash-sample">Load sample data</button>
+      </div>
+    </div>`;
+    document.getElementById('dash-sample').addEventListener('click', () => { loadSampleData(); route(); toast('Sample team loaded'); });
+    return;
+  }
+
+  const wins = state.matches.filter(m => m.result === 'W').length;
+  const losses = state.matches.length - wins;
+  const rate = state.matches.length ? Math.round((wins / state.matches.length) * 100) : null;
+
+  // streak + slump alerts
+  const alerts = [];
+  for (const p of roster) {
+    const form = recentForm(p.id);
+    if (!form) continue;
+    if (form.streak.count >= 3 && form.streak.type === 'W') alerts.push(`${playerLink(p.id)} is on a <b>${form.streak.count}-match win streak</b>.`);
+    else if (form.streak.count >= 3 && form.streak.type === 'L') alerts.push(`${playerLink(p.id)} has lost <b>${form.streak.count} straight</b> — worth a check-in.`);
+    else if (form.trend === 'down') alerts.push(`${playerLink(p.id)}'s form is dipping versus earlier matches.`);
+  }
+
+  const inForm = roster
+    .map(p => ({ p, form: recentForm(p.id) }))
+    .filter(x => x.form)
+    .sort((a, b) => b.form.recentRate - a.form.recentRate)
+    .slice(0, 5);
+
+  const recent = [...state.matches].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5);
+
+  VIEW.innerHTML = `
+  <div class="page-head">
+    <h1>${esc(state.settings.teamName)}</h1>
+    <p class="muted">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+  </div>
+
+  <div class="grid4">
+    <div class="card stat"><div class="stat-num">${roster.length}</div><div class="stat-label">Roster players</div></div>
+    <div class="card stat"><div class="stat-num">${wins}–${losses}</div><div class="stat-label">Team record</div></div>
+    <div class="card stat"><div class="stat-num">${rate == null ? '—' : rate + '%'}</div><div class="stat-label">Win rate</div></div>
+    <div class="card stat"><div class="stat-num">${tryouts.length}</div><div class="stat-label">Tryout prospects${tryouts.length ? ' <a class="small" href="#/tryouts">→</a>' : ''}</div></div>
+  </div>
+
+  ${alerts.length ? `<div class="card section"><div class="card-title">Needs attention</div>${alerts.map(a => `<p style="margin:4px 0">${a}</p>`).join('')}</div>` : ''}
+
+  <div class="grid2 section">
+    <div class="card">
+      <div class="card-title">In form</div>
+      ${inForm.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Player</th><th>Last 5</th><th>Trend</th><th></th></tr></thead>
+        <tbody>${inForm.map(({ p, form }) => `<tr>
+          <td>${playerLink(p.id)}</td>
+          <td>${form.recentWins}/${form.recentTotal} ${wlDots(p.id, 5)}</td>
+          <td>${trendArrow(form)}</td>
+          <td>${sparklineSVG(playerMatches(p.id))}</td>
+        </tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">Log matches to see who\'s hot.</p>'}
+    </div>
+    <div class="card">
+      <div class="card-title">Latest matches</div>
+      ${recent.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Date</th><th>Player</th><th>Opponent</th><th></th></tr></thead>
+        <tbody>${recent.map(m => `<tr>
+          <td class="muted">${fmtDate(m.date)}</td>
+          <td>${playerLink(m.playerId)}${m.partnerId ? ' / ' + playerLink(m.partnerId) : ''}</td>
+          <td>${esc(m.opponent)}</td>
+          <td>${resultChip(m.result)}</td>
+        </tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">No matches logged yet.</p>'}
+    </div>
+  </div>
+
+  <div class="btn-row section">
+    <a class="btn btn-primary" href="#/matches">Log a match</a>
+    <a class="btn" href="#/tryouts">Score tryouts</a>
+    <a class="btn" href="#/rosters">Build a roster</a>
+    <a class="btn" href="#/analyze">Analyze video</a>
+    <a class="btn" href="#/insights">Team insights</a>
+  </div>`;
+}
+
+/* ---------- student dashboard ---------- */
+
+function renderStudentDashboard() {
+  const me = currentStudent();
+  if (!me) {
+    const roster = state.players.filter(p => p.status === 'roster');
+    VIEW.innerHTML = `
+    <div class="page-head"><h1>Welcome</h1></div>
+    <div class="card">
+      <p>You're browsing as a guest. You can analyze your own clips, compare with pros, and browse drills.</p>
+      ${roster.length ? `
+        <label style="max-width:280px">On the roster? Pick your name
+          <select id="me-pick">${playerOptions(null)}</select>
+        </label>
+        <div class="btn-row"><button class="btn btn-sm" id="me-go">That's me</button></div>`
+      : '<p class="muted small">Once your coach adds you to the roster on this device, you can link your name and see your own stats here.</p>'}
+    </div>
+    <div class="grid3">
+      <div class="card"><h3>Analyze my game</h3><p class="muted small">Record 60 seconds and get coached.</p><a class="btn btn-sm" href="#/analyze">Open →</a></div>
+      <div class="card"><h3>Compare with a pro</h3><p class="muted small">Side-by-side with the greats.</p><a class="btn btn-sm" href="#/compare">Open →</a></div>
+      <div class="card"><h3>Drill library</h3><p class="muted small">Standard drills by skill.</p><a class="btn btn-sm" href="#/drills">Open →</a></div>
+    </div>`;
+    document.getElementById('me-go')?.addEventListener('click', () => {
+      setStudentId(document.getElementById('me-pick').value);
+      route();
+    });
+    return;
+  }
+
+  const form = recentForm(me.id);
+  const profile = skillProfile(me.id);
+  const weak = improvementAreas(me.id);
+  const latest = playerSessions(me.id)[0];
+
+  VIEW.innerHTML = `
+  <div class="page-head">
+    <h1>Hi, ${esc(me.name.split(' ')[0])}</h1>
+    <p class="muted">${esc(state.settings.teamName)}</p>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">My form</div>
+      ${form ? `
+        <p style="font-size:18px;font-weight:700;margin-bottom:4px">${form.recentWins} of ${form.recentTotal} won ${trendArrow(form)}</p>
+        <p>${wlDots(me.id)} ${form.streak.count >= 2 ? `<span class="small muted">· ${form.streak.count}-match ${form.streak.type === 'W' ? 'win' : 'loss'} streak</span>` : ''}</p>
+        ${sparklineSVG(playerMatches(me.id), { w: 220, h: 36 })}`
+      : '<p class="muted">No matches logged yet — your coach logs them after each game.</p>'}
+    </div>
+    <div class="card">
+      <div class="card-title">My skills</div>
+      ${profile ? radarSVG(profile, { size: 230 }) : '<p class="muted">Run a video analysis or play rated matches to build your skill profile.</p>'}
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">What to work on</div>
+      ${weak.length ? weak.map(w => `
+        <p style="margin:6px 0"><b>${w.label}</b> <span class="muted small">(${w.score}/100)</span><br>
+        <span class="small">${esc(w.drill)}</span></p>`).join('') + `<a class="small" href="#/drills">Browse all drills →</a>`
+      : '<p class="muted">Nothing yet — analyze a clip to find your focus areas.</p>'}
+    </div>
+    <div class="card">
+      <div class="card-title">Latest AI feedback</div>
+      ${latest ? `
+        <p class="small muted">${esc(latest.label)} · ${fmtDate(latest.date)}</p>
+        ${latest.feedback.slice(0, 2).map(f => `
+          <div class="fb-card fb-${esc(f.type)}" style="cursor:default">
+            <div class="fb-head"><span class="fb-time">${esc(f.timestamp)}</span>${esc(f.title)}</div>
+            <div class="fb-body small">${esc(f.body)}</div>
+          </div>`).join('')}`
+      : '<p class="muted">No analyses yet.</p>'}
+      <div class="btn-row"><a class="btn btn-primary btn-sm" href="#/analyze">Analyze my game</a><a class="btn btn-sm" href="#/compare">Compare with a pro</a></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- team (read-only for players) ---------- */
+
+function renderTeam() {
+  const roster = state.players.filter(p => p.status === 'roster');
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>${esc(state.settings.teamName)}</h1><p class="muted">${roster.length} players</p></div>
+  ${roster.length ? `<div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>Player</th><th>Year</th><th>Record</th><th>Last 8</th><th>Trend</th></tr></thead>
+    <tbody>${roster.map(p => {
+      const ms = playerMatches(p.id);
+      const w = ms.filter(m => m.result === 'W').length;
+      return `<tr>
+        <td>${playerLink(p.id)}</td>
+        <td class="muted">${esc(p.year ?? '')}</td>
+        <td>${ms.length ? `${w}–${ms.length - w}` : '<span class="muted">—</span>'}</td>
+        <td>${wlDots(p.id)}</td>
+        <td>${trendArrow(recentForm(p.id))}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>`
+  : '<div class="empty"><h3>No roster yet</h3><p>The coach hasn\'t added players on this device.</p></div>'}`;
+}
+
+/* ---------- insights (coach) ---------- */
+
+function renderInsights() {
+  const chart = depthChart();
+  const plan = practicePlan();
+  const h2h = headToHead();
+  const chem = pairChemistry().filter(c => c.total >= 2).slice(0, 6);
+  const trend = [...teamTrend()].reverse(); // sparkline expects newest-first
+  const wins = state.matches.filter(m => m.result === 'W').length;
+
+  const depthCol = key => `
+    <div class="card">
+      <div class="card-title">${POSITIONS[key].label}</div>
+      ${chart[key].length ? chart[key].map((x, i) => `
+        <p style="margin:5px 0"><span class="rank-num">${i + 1}.</span>${playerLink(x.player.id)}
+        <span class="muted small">fit ${x.score}${x.wr != null ? ` · ${Math.round(x.wr * 100)}% wins` : ''}</span></p>`).join('')
+      : '<p class="muted small">Needs rated matches or analyses.</p>'}
+    </div>`;
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Team insights</h1><p class="muted">Everything derived from logged matches and analyses</p></div>
+
+  <div class="card">
+    <div class="card-title">Season trajectory</div>
+    ${state.matches.length >= 2
+      ? `${sparklineSVG(trend, { w: 520, h: 48 })}<p class="small muted" style="margin-top:6px">Rolling team win rate · record ${wins}–${state.matches.length - wins}</p>`
+      : '<p class="muted">Log a few matches to see the season curve.</p>'}
+  </div>
+
+  <h2 class="section">Depth chart</h2>
+  <p class="muted small">Best-fit players per role, from merged coach ratings and AI scores.</p>
+  <div class="grid3">${depthCol('singles')}${depthCol('front')}${depthCol('back')}</div>
+
+  <h2 class="section">Practice plan <button class="btn btn-sm no-print" id="plan-print" style="vertical-align:middle">Print</button></h2>
+  ${plan.length ? `<div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>Skill</th><th>Team avg</th><th>Focus players</th><th>Drill</th></tr></thead>
+    <tbody>${plan.map(r => `<tr>
+      <td><b>${r.label}</b></td>
+      <td>${r.avg}</td>
+      <td class="small">${r.focusPlayers.length ? r.focusPlayers.map(esc).join(', ') : '<span class="muted">—</span>'}</td>
+      <td class="small">${esc(r.drill)}</td>
+    </tr>`).join('')}</tbody></table></div></div>`
+  : '<div class="card"><p class="muted">No skill data yet — rate matches or run analyses.</p></div>'}
+
+  <div class="grid2 section">
+    <div class="card">
+      <div class="card-title">Head-to-head</div>
+      ${h2h.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Opponent</th><th>W</th><th>L</th><th>Win %</th></tr></thead>
+        <tbody>${h2h.map(r => `<tr><td>${esc(r.opponent)}</td><td>${r.wins}</td><td>${r.losses}</td><td>${Math.round(r.rate * 100)}%</td></tr>`).join('')}</tbody>
+      </table></div>` : '<p class="muted">No matches yet.</p>'}
+    </div>
+    <div class="card">
+      <div class="card-title">Doubles chemistry</div>
+      ${chem.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Pair</th><th>Together</th><th>Win %</th></tr></thead>
+        <tbody>${chem.map(c => `<tr>
+          <td>${playerLink(c.ids[0])} + ${playerLink(c.ids[1])}</td>
+          <td>${c.total}</td><td>${Math.round(c.rate * 100)}%</td>
+        </tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">Log doubles matches (with a partner) to measure pair chemistry.</p>'}
+    </div>
+  </div>`;
+
+  document.getElementById('plan-print')?.addEventListener('click', () => window.print());
+}
+
+/* ---------- players (coach) ---------- */
+
+function renderPlayers(_, params) {
+  const filter = params?.get('f') || 'all';
+  const counts = { all: state.players.length };
+  for (const s of ['roster', 'tryout', 'cut']) counts[s] = state.players.filter(p => p.status === s).length;
+  const list = state.players
+    .filter(p => filter === 'all' || p.status === filter)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Players</h1></div>
+
+  <div class="inline-form">
+    <div class="form-grid">
+      <label>Name<input type="text" id="np-name" placeholder="Full name — or several: Alex, Ben, Chris"></label>
+      <label>Year<select id="np-year"><option>9</option><option>10</option><option>11</option><option selected>12</option></select></label>
+      <label>Hand<select id="np-hand"><option>Right</option><option>Left</option></select></label>
+      <label>Status<select id="np-status"><option value="roster">Roster</option><option value="tryout">Tryout</option></select></label>
+    </div>
+    <button class="btn btn-primary btn-sm" id="np-add">Add player</button>
+  </div>
+
+  <div class="filter-row">
+    ${['all', 'roster', 'tryout', 'cut'].map(f =>
+      `<button class="filter-chip ${f === filter ? 'active' : ''}" data-f="${f}">${f[0].toUpperCase() + f.slice(1)} (${counts[f]})</button>`).join('')}
+  </div>
+
+  ${list.length ? `<div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>Player</th><th>Year</th><th>Hand</th><th>Status</th><th>Record</th><th>Trend</th><th>Best fit</th></tr></thead>
+    <tbody>${list.map(p => {
+      const ms = playerMatches(p.id);
+      const w = ms.filter(m => m.result === 'W').length;
+      const pos = positionScores(p.id);
+      return `<tr>
+        <td>${playerLink(p.id)}</td>
+        <td class="muted">${esc(p.year ?? '')}</td>
+        <td class="muted">${esc(p.hand ?? '')}</td>
+        <td><span class="chip chip-neutral">${esc(p.status)}</span></td>
+        <td>${ms.length ? `${w}–${ms.length - w}` : '<span class="muted">—</span>'}</td>
+        <td>${trendArrow(recentForm(p.id))}</td>
+        <td class="small">${pos ? POSITIONS[pos.best].label : '<span class="muted">—</span>'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>`
+  : `<div class="empty"><h3>No players ${filter === 'all' ? 'yet' : 'in this group'}</h3><p>Add players above${filter === 'all' ? ' or load sample data from Settings' : ''}.</p></div>`}`;
+
+  document.getElementById('np-add').addEventListener('click', () => {
+    const names = document.getElementById('np-name').value.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+    if (!names.length) { toast('Enter a name first'); return; }
+    for (const name of names) {
+      state.players.push({
+        id: uid(), name,
+        year: Number(document.getElementById('np-year').value),
+        hand: document.getElementById('np-hand').value,
+        status: document.getElementById('np-status').value,
+        tryoutScores: null, aiNote: null, notes: '', createdAt: new Date().toISOString(),
+      });
+    }
+    saveState();
+    toast(names.length === 1 ? `${names[0]} added` : `${names.length} players added`);
+    route();
+  });
+  document.getElementById('np-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('np-add').click();
+  });
+  VIEW.querySelectorAll('.filter-chip').forEach(b => b.addEventListener('click', () => {
+    location.hash = `#/players?f=${b.dataset.f}`;
+  }));
+}
+
+/* ---------- player detail ---------- */
+
+function renderPlayerDetail(id) {
+  const p = getPlayer(id);
+  if (!p) { VIEW.innerHTML = '<div class="empty"><h3>Player not found</h3></div>'; return; }
+  const coach = isCoach();
+  const profile = skillProfile(id);
+  const form = recentForm(id);
+  const pos = positionScores(id);
+  const weak = improvementAreas(id);
+  const strong = strengths(id);
+  const ms = playerMatches(id);
+  const wins = ms.filter(m => m.result === 'W').length;
+  const sessions = playerSessions(id);
+
+  VIEW.innerHTML = `
+  ${coach ? '<p class="small no-print"><a href="#/players">← Players</a></p>' : ''}
+  <div class="page-head">
+    <h1>${esc(p.name)} <span class="chip chip-neutral">${esc(p.status)}</span></h1>
+    <div class="btn-row no-print" style="margin:0">
+      ${coach ? `<a class="btn btn-sm" href="#/matches?player=${id}">Log match</a>` : ''}
+      <a class="btn btn-sm" href="#/analyze?player=${id}">Analyze video</a>
+      ${coach ? `<button class="btn btn-sm" id="pd-edit-toggle">Edit</button>` : ''}
+    </div>
+  </div>
+  <p class="muted" style="margin-top:-10px">Year ${esc(p.year ?? '—')} · ${esc(p.hand ?? '—')}-handed${ms.length ? ` · ${wins}–${ms.length - wins} overall` : ''}</p>
+
+  <div id="pd-edit" class="inline-form" style="display:none">
+    <div class="form-grid">
+      <label>Name<input type="text" id="pe-name" value="${esc(p.name)}"></label>
+      <label>Year<select id="pe-year">${[9, 10, 11, 12].map(y => `<option ${p.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
+      <label>Hand<select id="pe-hand">${['Right', 'Left'].map(h => `<option ${p.hand === h ? 'selected' : ''}>${h}</option>`).join('')}</select></label>
+      <label>Status<select id="pe-status">${['roster', 'tryout', 'cut'].map(s => `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+    </div>
+    <label style="margin-top:8px">Coach notes (only shown in coach view)<textarea id="pe-notes" placeholder="Anything worth remembering about this player">${esc(p.notes || '')}</textarea></label>
+    <div class="btn-row">
+      <button class="btn btn-primary btn-sm" id="pe-save">Save</button>
+      <button class="btn btn-danger btn-sm" id="pe-delete">Delete player…</button>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Skill profile</div>
+      ${profile ? radarSVG(profile) + skillBars(profile) : '<p class="muted">No data yet — rate a match or run a video analysis.</p>'}
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-title">Form</div>
+        ${form ? `
+          <p style="font-size:18px;font-weight:700;margin-bottom:4px">Won ${form.recentWins} of last ${form.recentTotal} ${trendArrow(form)}</p>
+          <p>${wlDots(id)} ${form.streak.count >= 2 ? `<span class="small muted">· ${form.streak.count}-match ${form.streak.type === 'W' ? 'win' : 'loss'} streak</span>` : ''}</p>
+          ${sparklineSVG(ms, { w: 240, h: 40 })}`
+        : '<p class="muted">No matches yet.</p>'}
+      </div>
+      <div class="card">
+        <div class="card-title">Position fit</div>
+        ${pos ? `
+          <p style="margin-bottom:8px">Best fit: <b>${POSITIONS[pos.best].label}</b></p>
+          ${Object.keys(POSITIONS).map(k => `
+            <div class="bar-row">
+              <span class="bar-label" style="width:150px">${POSITIONS[k].label}</span>
+              <span class="bar-track"><span class="bar-fill" style="width:${pos[k]}%"></span></span>
+              <span class="bar-val">${pos[k]}</span>
+            </div>`).join('')}`
+        : '<p class="muted">Needs skill data first.</p>'}
+      </div>
+      <div class="card">
+        <div class="card-title">Strengths & focus</div>
+        ${strong.length ? `<p>${strong.map(s => `<span class="tag tag-accent">${s.label} ${s.score}</span>`).join(' ')}</p>` : ''}
+        ${weak.length ? weak.map(w => `<p class="small" style="margin:6px 0"><b>${w.label}</b> (${w.score}) — ${esc(w.drill)}</p>`).join('') : '<p class="muted">No skill data yet.</p>'}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Coach's read</div>
+    ${coach && p.notes ? `<p style="white-space:pre-wrap"><b>Notes:</b> ${esc(p.notes)}</p>` : ''}
+    <p>${esc(localCoachNote(id))}</p>
+    <div id="pd-ainote">
+      ${p.aiNote ? `<hr><p style="white-space:pre-wrap">${esc(p.aiNote.text)}</p><p class="small muted">AI note · ${fmtDate(p.aiNote.date)}</p>` : ''}
+    </div>
+    ${coach ? `<div class="btn-row no-print">
+      <button class="btn btn-sm" id="pd-ainote-btn" ${hasApiKey() ? '' : 'disabled title="Add an API key in Settings"'}>${p.aiNote ? 'Refresh AI note' : 'Generate AI note'}</button>
+      <span class="small muted" id="pd-ainote-status"></span>
+    </div>` : ''}
+  </div>
+
+  <div class="card">
+    <div class="card-title">Saved clips</div>
+    <div id="pd-clips"><p class="muted small">Loading…</p></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Recent matches</div>
+      ${ms.length ? `<div class="table-wrap"><table><tbody>
+        ${ms.slice(0, 10).map(m => `<tr>
+          <td class="muted small">${fmtDate(m.date)}</td>
+          <td><span class="tag">${esc(m.discipline)}</span>${esc(m.opponent)}${m.notes ? `<div class="small muted">${esc(m.notes)}</div>` : ''}</td>
+          <td class="small muted">${esc(m.score)}</td>
+          <td>${resultChip(m.result)}</td>
+        </tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">None yet.</p>'}
+    </div>
+    <div class="card">
+      <div class="card-title">Analysis sessions</div>
+      ${sessions.length ? sessions.slice(0, 6).map(s => `
+        <details>
+          <summary>${esc(s.label)} <span class="muted small">· ${fmtDate(s.date)}${s.focus && s.focus !== 'all' ? ' · focus: ' + esc(s.focus) : ''}</span></summary>
+          ${s.scores ? skillBars(s.scores) : ''}
+          ${(s.feedback || []).map(f => `
+            <div class="fb-card fb-${esc(f.type)}" style="cursor:default">
+              <div class="fb-head"><span class="fb-time">${esc(f.timestamp)}</span>${esc(f.title)}</div>
+              <div class="fb-body small">${esc(f.body)}</div>
+              ${f.tip ? `<div class="fb-tip">Drill: ${esc(f.tip)}</div>` : ''}
+            </div>`).join('')}
+        </details>`).join('')
+      : '<p class="muted">No analyses yet.</p>'}
+    </div>
+  </div>`;
+
+  // clips
+  listClips().then(clips => {
+    const mine = clips.filter(c => c.playerId === id);
+    const box = document.getElementById('pd-clips');
+    if (!box) return;
+    if (!mine.length) { box.innerHTML = '<p class="muted">No saved clips. Record one from the Analyze page.</p>'; return; }
+    box.innerHTML = mine.map(c => `
+      <div class="btn-row" data-clip="${c.id}" style="margin:6px 0">
+        <b>${esc(c.label || 'Clip')}</b>
+        <span class="muted small">${fmtDate(c.date)}${c.duration ? ` · ${Math.round(c.duration)}s` : ''}</span>
+        <button class="btn btn-sm" data-act="play">Play</button>
+        <a class="btn btn-sm" href="#/analyze?clip=${c.id}">Analyze</a>
+        ${coach ? '<button class="btn btn-danger btn-sm" data-act="del">Delete</button>' : ''}
+      </div>
+      <div class="clip-slot" data-slot="${c.id}"></div>`).join('');
+    box.querySelectorAll('[data-act="play"]').forEach(btn => btn.addEventListener('click', async () => {
+      const row = btn.closest('[data-clip]');
+      const clip = await getClip(row.dataset.clip);
+      const slot = box.querySelector(`[data-slot="${row.dataset.clip}"]`);
+      if (!clip) { toast('Clip missing'); return; }
+      if (slot.innerHTML) { slot.innerHTML = ''; return; }
+      box.querySelectorAll('.clip-slot').forEach(s => s.innerHTML = '');
+      slot.innerHTML = `<video controls autoplay src="${trackUrl(URL.createObjectURL(clip.blob))}" style="margin-bottom:10px"></video>`;
+    }));
+    box.querySelectorAll('[data-act="del"]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm('Delete this clip?')) return;
+      await deleteClip(btn.closest('[data-clip]').dataset.clip);
+      toast('Clip deleted');
+      renderPlayerDetail(id);
+    }));
+  });
+
+  if (!coach) return;
+
+  document.getElementById('pd-edit-toggle').addEventListener('click', () => {
+    const f = document.getElementById('pd-edit');
+    f.style.display = f.style.display === 'none' ? '' : 'none';
+  });
+  document.getElementById('pe-save').addEventListener('click', () => {
+    p.name = document.getElementById('pe-name').value.trim() || p.name;
+    p.year = Number(document.getElementById('pe-year').value);
+    p.hand = document.getElementById('pe-hand').value;
+    p.status = document.getElementById('pe-status').value;
+    p.notes = document.getElementById('pe-notes').value.trim();
+    saveState();
+    toast('Saved');
+    renderPlayerDetail(id);
+  });
+  document.getElementById('pe-delete').addEventListener('click', async () => {
+    if (!confirm(`Delete ${p.name}? Their matches, analyses, and clips are removed too. This cannot be undone.`)) return;
+    state.players = state.players.filter(x => x.id !== id);
+    state.matches = state.matches.filter(m => m.playerId !== id);
+    state.matches.forEach(m => { if (m.partnerId === id) m.partnerId = null; });
+    state.sessions = state.sessions.filter(s => s.playerId !== id);
+    state.rosters.forEach(r => r.slots.forEach(s => { s.playerIds = s.playerIds.filter(x => x !== id); }));
+    saveState();
+    await deletePlayerClips(id);
+    toast('Player deleted');
+    location.hash = '#/players';
+  });
+  document.getElementById('pd-ainote-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('pd-ainote-btn');
+    const status = document.getElementById('pd-ainote-status');
+    btn.disabled = true;
+    status.textContent = 'Writing note…';
+    try {
+      const text = await aiCoachNote(p);
+      p.aiNote = { text, date: new Date().toISOString() };
+      saveState();
+      renderPlayerDetail(id);
+    } catch (err) {
+      status.textContent = 'Failed: ' + err.message;
+      btn.disabled = false;
+    }
+  });
+}
+
+/* ---------- matches (coach) ---------- */
+
+const DISCIPLINES = ['MS', 'WS', 'MD', 'WD', 'XD'];
+const DOUBLES = new Set(['MD', 'WD', 'XD']);
+
+function renderMatches(_, params) {
+  const preselect = params?.get('player') || null;
+  const filterPlayer = params?.get('f') || '';
+  let result = 'W';
+
+  const all = [...state.matches].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const list = filterPlayer ? all.filter(m => m.playerId === filterPlayer || m.partnerId === filterPlayer) : all;
+  const fromTryout = preselect && getPlayer(preselect)?.status === 'tryout';
+
+  VIEW.innerHTML = `
+  ${fromTryout ? '<p class="small no-print"><a href="#/tryouts">← Back to tryouts</a></p>' : ''}
+  <div class="page-head"><h1>Matches</h1><p class="muted">${state.matches.length} logged</p></div>
+
+  <div class="card">
+    <div class="card-title">Log a match</div>
+    <div class="form-grid">
+      <label>Player<select id="mf-player">${playerOptions(preselect, { statuses: ['roster', 'tryout'] })}</select></label>
+      <label>Discipline<select id="mf-disc">${DISCIPLINES.map(d => `<option>${d}</option>`).join('')}</select></label>
+      <label id="mf-partner-wrap" style="display:none">Partner<select id="mf-partner"><option value="">—</option>${playerOptions(null, { statuses: ['roster', 'tryout'] })}</select></label>
+      <label>Date<input type="date" id="mf-date" value="${todayISO()}"></label>
+      <label>Opponent<input type="text" id="mf-opp" placeholder="School or player"></label>
+      <label>Score<input type="text" id="mf-score" placeholder="21-15, 21-18"></label>
+    </div>
+    <div class="btn-row">
+      <span class="small muted">Result:</span>
+      <span class="seg">
+        <button id="mf-w" class="active seg-w">Won</button>
+        <button id="mf-l" class="seg-l">Lost</button>
+      </span>
+    </div>
+    <details>
+      <summary>Rate their play (optional, 1–5)</summary>
+      <div id="mf-ratings">${SKILLS.map(s => ratingRow(s, SKILL_LABELS[s])).join('')}</div>
+    </details>
+    <label style="margin-top:8px">Notes<input type="text" id="mf-notes" placeholder="Anything worth remembering"></label>
+    <div class="btn-row"><button class="btn btn-primary" id="mf-save">Save match</button></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">History</div>
+    <div class="btn-row">
+      <label style="max-width:220px">Filter by player
+        <select id="ml-filter"><option value="">Everyone</option>${playerOptions(filterPlayer, { statuses: ['roster', 'tryout', 'cut'] })}</select>
+      </label>
+    </div>
+    ${list.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Player</th><th>Event</th><th>Opponent</th><th>Score</th><th></th><th></th></tr></thead>
+      <tbody>${list.slice(0, 40).map(m => `<tr>
+        <td class="muted small">${fmtDate(m.date)}</td>
+        <td>${playerLink(m.playerId)}${m.partnerId ? '<span class="muted"> / </span>' + playerLink(m.partnerId) : ''}</td>
+        <td><span class="tag">${esc(m.discipline)}</span>${m.context === 'tryout' ? '<span class="tag">tryout</span>' : ''}</td>
+        <td>${esc(m.opponent)}${m.notes ? `<div class="small muted">${esc(m.notes)}</div>` : ''}</td>
+        <td class="small muted">${esc(m.score)}</td>
+        <td>${resultChip(m.result)}</td>
+        <td><button class="btn btn-danger btn-sm" data-del="${m.id}">✕</button></td>
+      </tr>`).join('')}</tbody></table></div>
+      ${list.length > 40 ? `<p class="small muted">Showing latest 40 of ${list.length}.</p>` : ''}`
+    : '<p class="muted">Nothing here yet.</p>'}
+  </div>`;
+
+  const discSel = document.getElementById('mf-disc');
+  const partnerWrap = document.getElementById('mf-partner-wrap');
+  const syncPartner = () => { partnerWrap.style.display = DOUBLES.has(discSel.value) ? '' : 'none'; };
+  discSel.addEventListener('change', syncPartner);
+  syncPartner();
+
+  const wBtn = document.getElementById('mf-w'), lBtn = document.getElementById('mf-l');
+  wBtn.addEventListener('click', () => { result = 'W'; wBtn.classList.add('active'); lBtn.classList.remove('active'); });
+  lBtn.addEventListener('click', () => { result = 'L'; lBtn.classList.add('active'); wBtn.classList.remove('active'); });
+
+  wireRatingRows(document.getElementById('mf-ratings'));
+
+  document.getElementById('mf-save').addEventListener('click', () => {
+    const playerId = document.getElementById('mf-player').value;
+    if (!playerId) { toast('Add a player first'); return; }
+    const player = getPlayer(playerId);
+    let partnerId = DOUBLES.has(discSel.value) ? (document.getElementById('mf-partner').value || null) : null;
+    if (partnerId === playerId) partnerId = null;
+    state.matches.push({
+      id: uid(), playerId, partnerId,
+      date: document.getElementById('mf-date').value || todayISO(),
+      opponent: document.getElementById('mf-opp').value.trim() || 'Unknown',
+      discipline: discSel.value,
+      result,
+      score: document.getElementById('mf-score').value.trim(),
+      ratings: readRatings(document.getElementById('mf-ratings')),
+      notes: document.getElementById('mf-notes').value.trim(),
+      context: player && player.status === 'tryout' ? 'tryout' : 'season',
+    });
+    saveState();
+    toast('Match saved');
+    // keep the player preselected (and the tryouts back-link) for quick repeat logging
+    renderMatches(_, new URLSearchParams(preselect ? `player=${preselect}` : (filterPlayer ? `f=${filterPlayer}` : '')));
+  });
+
+  document.getElementById('ml-filter').addEventListener('change', e => {
+    location.hash = e.target.value ? `#/matches?f=${e.target.value}` : '#/matches';
+  });
+  VIEW.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+    if (!confirm('Delete this match?')) return;
+    state.matches = state.matches.filter(m => m.id !== b.dataset.del);
+    saveState();
+    toast('Match deleted');
+    route();
+  }));
+}
+
+/* ---------- tryouts (coach) ---------- */
+
+const TRYOUT_DRILLS = [
+  ['serve', 'Serving'], ['footwork', 'Footwork'], ['smash', 'Smash'], ['net', 'Net play'],
+  ['rally', 'Rally length'], ['sense', 'Court sense'], ['athleticism', 'Athleticism'],
+];
+
+function renderTryouts() {
+  const prospects = state.players.filter(p => p.status === 'tryout')
+    .sort((a, b) => tryoutComposite(b) - tryoutComposite(a));
+  const cut = state.players.filter(p => p.status === 'cut');
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Tryouts</h1><p class="muted">Tap scores as they play — the board ranks live</p></div>
+
+  <div class="inline-form">
+    <div class="form-grid">
+      <label>Name<input type="text" id="tp-name" placeholder="Prospect name — or several, comma-separated"></label>
+      <label>Year<select id="tp-year"><option selected>9</option><option>10</option><option>11</option><option>12</option></select></label>
+      <label>Hand<select id="tp-hand"><option>Right</option><option>Left</option></select></label>
+    </div>
+    <button class="btn btn-primary btn-sm" id="tp-add">Add prospect</button>
+  </div>
+
+  <div id="tryout-board">
+  ${prospects.length ? prospects.map((p, i) => {
+    const ms = playerMatches(p.id);
+    const w = ms.filter(m => m.result === 'W').length;
+    return `
+    <div class="card" data-prospect="${p.id}" data-composite="${tryoutComposite(p)}">
+      <div class="page-head" style="margin-bottom:8px">
+        <h3 style="margin:0"><span class="rank-num" data-rank>${i + 1}.</span> ${playerLink(p.id)}
+          <span class="muted small">yr ${esc(p.year)} · ${esc(p.hand)}</span></h3>
+        <div>
+          <span class="tag" title="Match record in tryouts">${ms.length ? `${w}–${ms.length - w}` : 'no matches'}</span>
+          <span class="chip chip-w" data-composite-chip>${tryoutComposite(p).toFixed(1)}/5</span>
+        </div>
+      </div>
+      <div class="ratings">${TRYOUT_DRILLS.map(([k, label]) => ratingRow(k, label, p.tryoutScores?.[k] || 0)).join('')}</div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" data-act="promote">Promote to roster</button>
+        <a class="btn btn-sm" href="#/matches?player=${p.id}">Log match</a>
+        <a class="btn btn-sm" href="#/analyze?player=${p.id}">Record video</a>
+        <button class="btn btn-danger btn-sm" data-act="cut">Cut</button>
+      </div>
+    </div>`;
+  }).join('')
+  : `<div class="empty"><h3>No prospects yet</h3><p>Add each player trying out, tap 1–5 scores while they play the drills, and log their tryout matches. The board ranks them by composite score.</p></div>`}
+  </div>
+
+  ${cut.length ? `
+  <details class="section">
+    <summary>Cut (${cut.length})</summary>
+    ${cut.map(p => `<div class="btn-row" data-cut="${p.id}">
+      <b>${esc(p.name)}</b><span class="muted small">yr ${esc(p.year)}</span>
+      <button class="btn btn-sm" data-act="restore">Back to tryouts</button>
+      <button class="btn btn-danger btn-sm" data-act="forget">Delete forever</button>
+    </div>`).join('')}
+  </details>` : ''}`;
+
+  document.getElementById('tp-add').addEventListener('click', () => {
+    const names = document.getElementById('tp-name').value.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+    if (!names.length) { toast('Enter a name first'); return; }
+    for (const name of names) {
+      state.players.push({
+        id: uid(), name,
+        year: Number(document.getElementById('tp-year').value),
+        hand: document.getElementById('tp-hand').value,
+        status: 'tryout', tryoutScores: null, aiNote: null, notes: '', createdAt: new Date().toISOString(),
+      });
+    }
+    saveState();
+    toast(names.length === 1 ? `${names[0]} added to tryouts` : `${names.length} prospects added`);
+    renderTryouts();
+  });
+  document.getElementById('tp-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('tp-add').click();
+  });
+
+  const board = document.getElementById('tryout-board');
+
+  const resort = () => {
+    if (!document.body.contains(board)) return; // page changed before the timer fired
+    const cards = [...board.querySelectorAll('[data-prospect]')];
+    cards.sort((a, b) => Number(b.dataset.composite) - Number(a.dataset.composite));
+    cards.forEach(c => board.appendChild(c));
+    cards.forEach((c, i) => { c.querySelector('[data-rank]').textContent = `${i + 1}.`; });
+  };
+  // re-rank a moment after the last tap, so the card doesn't jump out from
+  // under the coach's finger while they're still scoring one player
+  let resortTimer = null;
+  const resortSoon = () => { clearTimeout(resortTimer); resortTimer = setTimeout(resort, 1200); };
+
+  board.querySelectorAll('[data-prospect]').forEach(card => {
+    const p = getPlayer(card.dataset.prospect);
+    wireRatingRows(card.querySelector('.ratings'), (skill, v) => {
+      p.tryoutScores = p.tryoutScores || {};
+      p.tryoutScores[skill] = v;
+      saveState();
+      card.dataset.composite = tryoutComposite(p);
+      card.querySelector('[data-composite-chip]').textContent = `${tryoutComposite(p).toFixed(1)}/5`;
+      resortSoon();
+    });
+    card.querySelector('[data-act="promote"]').addEventListener('click', () => {
+      p.status = 'roster';
+      saveState();
+      toast(`${p.name} promoted to the roster 🎉`);
+      renderTryouts();
+    });
+    card.querySelector('[data-act="cut"]').addEventListener('click', () => {
+      if (!confirm(`Cut ${p.name}? Their data is kept and they can be restored.`)) return;
+      p.status = 'cut';
+      saveState();
+      renderTryouts();
+    });
+  });
+
+  VIEW.querySelectorAll('[data-cut]').forEach(row => {
+    const p = getPlayer(row.dataset.cut);
+    row.querySelector('[data-act="restore"]').addEventListener('click', () => {
+      p.status = 'tryout';
+      saveState();
+      renderTryouts();
+    });
+    row.querySelector('[data-act="forget"]').addEventListener('click', async () => {
+      if (!confirm(`Permanently delete ${p.name} and all their data?`)) return;
+      state.players = state.players.filter(x => x.id !== p.id);
+      state.matches = state.matches.filter(m => m.playerId !== p.id);
+      state.sessions = state.sessions.filter(s => s.playerId !== p.id);
+      saveState();
+      await deletePlayerClips(p.id);
+      renderTryouts();
+    });
+  });
+}
+
+/* ---------- rosters (coach) ---------- */
+
+const DEFAULT_SLOTS = [
+  { code: 'S1', label: 'Singles 1', type: 'singles' },
+  { code: 'S2', label: 'Singles 2', type: 'singles' },
+  { code: 'S3', label: 'Singles 3', type: 'singles' },
+  { code: 'D1', label: 'Doubles 1', type: 'doubles' },
+  { code: 'D2', label: 'Doubles 2', type: 'doubles' },
+  { code: 'XD', label: 'Mixed doubles', type: 'doubles' },
+];
+
+function rosterWarnings(r) {
+  const seen = {};
+  const warns = [];
+  for (const slot of r.slots) {
+    const ids = slot.playerIds.filter(Boolean);
+    if (slot.type === 'doubles' && ids.length === 2 && ids[0] === ids[1]) {
+      warns.push(`${slot.label}: same player twice.`);
+    }
+    ids.forEach(id => { seen[id] = (seen[id] || 0) + 1; });
+  }
+  for (const [id, n] of Object.entries(seen)) {
+    if (n > 2) warns.push(`${playerName(id)} is in ${n} events — most leagues cap at 2.`);
+  }
+  return warns;
+}
+
+function renderRosters() {
+  const rosters = [...state.rosters].sort((a, b) => (a.date < b.date ? 1 : -1));
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Rosters</h1><p class="muted">Lineups for upcoming matches</p></div>
+
+  <div class="inline-form no-print">
+    <div class="form-grid">
+      <label>Name<input type="text" id="nr-name" placeholder="vs Westfield"></label>
+      <label>Date<input type="date" id="nr-date" value="${todayISO()}"></label>
+    </div>
+    <button class="btn btn-primary btn-sm" id="nr-add">New roster</button>
+  </div>
+
+  <div id="roster-list">
+    ${rosters.length ? rosters.map(r => renderRosterCard(r)).join('')
+    : '<div class="empty"><h3>No rosters yet</h3><p>Create one above, then auto-suggest a lineup or pick players yourself.</p></div>'}
+  </div>`;
+
+  document.getElementById('nr-add').addEventListener('click', () => {
+    const name = document.getElementById('nr-name').value.trim() || 'New lineup';
+    state.rosters.push({
+      id: uid(), name,
+      date: document.getElementById('nr-date').value || todayISO(),
+      slots: DEFAULT_SLOTS.map(s => ({ ...s, playerIds: [] })),
+    });
+    saveState();
+    renderRosters();
+  });
+  document.getElementById('nr-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('nr-add').click();
+  });
+
+  state.rosters.forEach(r => wireRosterCard(r));
+}
+
+function renderRosterCard(r) {
+  const opts = selected => `<option value="">—</option>${playerOptions(selected)}`;
+  return `
+  <div class="card" data-roster="${r.id}">
+    <div class="page-head" style="margin-bottom:10px">
+      <h3 style="margin:0">${esc(r.name)} <span class="muted small">· ${fmtDate(r.date)}</span></h3>
+      <div class="btn-row no-print" style="margin:0">
+        <button class="btn btn-sm" data-act="auto">Auto-suggest</button>
+        <button class="btn btn-sm" data-act="copy">Copy as text</button>
+        <button class="btn btn-sm" data-act="print">Print</button>
+        <button class="btn btn-danger btn-sm" data-act="del">Delete</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table><tbody>
+      ${r.slots.map((slot, si) => `<tr>
+        <td style="width:130px"><b>${esc(slot.label)}</b></td>
+        <td>
+          <div class="btn-row" style="margin:0">
+            <select data-slot="${si}" data-pos="0" style="max-width:220px">${opts(slot.playerIds[0])}</select>
+            ${slot.type === 'doubles' ? `<select data-slot="${si}" data-pos="1" style="max-width:220px">${opts(slot.playerIds[1])}</select>` : ''}
+            <button class="btn btn-sm no-print" data-remove-slot="${si}" title="Remove this slot">✕</button>
+          </div>
+        </td>
+      </tr>`).join('')}
+    </tbody></table></div>
+    <div class="btn-row no-print" style="margin-top:4px">
+      <button class="btn btn-sm" data-act="add-singles">+ Singles slot</button>
+      <button class="btn btn-sm" data-act="add-doubles">+ Doubles slot</button>
+    </div>
+    <div class="small" style="color:var(--loss)" data-warnings>${rosterWarnings(r).map(esc).join('<br>')}</div>
+  </div>`;
+}
+
+function wireRosterCard(r) {
+  const card = document.querySelector(`[data-roster="${r.id}"]`);
+  if (!card) return;
+  card.querySelectorAll('select[data-slot]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const slot = r.slots[Number(sel.dataset.slot)];
+      slot.playerIds[Number(sel.dataset.pos)] = sel.value || undefined;
+      slot.playerIds = slot.playerIds.filter(Boolean);
+      saveState();
+      card.querySelector('[data-warnings]').innerHTML = rosterWarnings(r).map(esc).join('<br>');
+    });
+  });
+  const addSlot = type => {
+    const prefix = type === 'singles' ? 'S' : 'D';
+    let n = r.slots.filter(s => s.type === type).length + 1;
+    while (r.slots.some(s => s.code === prefix + n)) n++;
+    r.slots.push({ code: prefix + n, label: `${type === 'singles' ? 'Singles' : 'Doubles'} ${n}`, type, playerIds: [] });
+    saveState();
+    renderRosters();
+  };
+  card.querySelector('[data-act="add-singles"]').addEventListener('click', () => addSlot('singles'));
+  card.querySelector('[data-act="add-doubles"]').addEventListener('click', () => addSlot('doubles'));
+  card.querySelectorAll('[data-remove-slot]').forEach(btn => btn.addEventListener('click', () => {
+    r.slots.splice(Number(btn.dataset.removeSlot), 1);
+    saveState();
+    renderRosters();
+  }));
+  card.querySelector('[data-act="auto"]').addEventListener('click', () => {
+    const suggestion = suggestRoster(r.slots);
+    r.slots.forEach(slot => { if (suggestion[slot.code]) slot.playerIds = suggestion[slot.code]; });
+    saveState();
+    toast('Lineup suggested from position fit, form, and pair chemistry');
+    renderRosters();
+  });
+  card.querySelector('[data-act="copy"]').addEventListener('click', async () => {
+    const lines = [`${r.name} — ${fmtDate(r.date)}`, ...r.slots.map(s =>
+      `${s.label}: ${s.playerIds.length ? s.playerIds.map(playerName).join(' / ') : '—'}`)];
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      toast('Copied to clipboard');
+    } catch {
+      prompt('Copy the lineup:', lines.join('\n'));
+    }
+  });
+  card.querySelector('[data-act="print"]').addEventListener('click', () => {
+    // print just this lineup, not the whole rosters page
+    card.classList.add('print-target');
+    document.body.classList.add('print-one');
+    const cleanup = () => {
+      card.classList.remove('print-target');
+      document.body.classList.remove('print-one');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+  });
+  card.querySelector('[data-act="del"]').addEventListener('click', () => {
+    if (!confirm(`Delete roster "${r.name}"?`)) return;
+    state.rosters = state.rosters.filter(x => x.id !== r.id);
+    saveState();
+    renderRosters();
+  });
+}
+
+/* ---------- analyze (record / upload → AI feedback) ---------- */
+
+let cameraStream = null;
+let mediaRecorder = null;
+let recordTimer = null;
+let currentBlob = null;     // the clip currently loaded in the player
+let currentClipId = null;   // set when the loaded clip is saved in the library
+window.lastClipBlob = null; // handoff to the Compare page
+
+function stopCamera() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.onstop = null; // page is going away — discard the take, don't touch dead DOM
+    mediaRecorder.stop();
+  }
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  if (recordTimer) { clearInterval(recordTimer); recordTimer = null; }
+  mediaRecorder = null;
+}
+
+function renderAnalyze(_, params) {
+  const coach = isCoach();
+  const me = currentStudent();
+  const preselect = params?.get('player') || (me ? me.id : null);
+  const loadClipId = params?.get('clip') || null;
+  currentBlob = null;
+  currentClipId = null;
+  const fromTryout = coach && preselect && getPlayer(preselect)?.status === 'tryout';
+
+  VIEW.innerHTML = `
+  ${fromTryout ? '<p class="small no-print"><a href="#/tryouts">← Back to tryouts</a></p>' : ''}
+  <div class="page-head"><h1>Analyze</h1><p class="muted">One minute of play → scored, timestamped coaching</p></div>
+  ${hasApiKey() ? '' : `<div class="notice">No API key set${coach ? ' — add one in <a href="#/settings">Settings</a>' : ' — ask your coach to add one in Settings'}. You can still record and save clips, and preview a sample analysis.</div>`}
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Record (auto-stops at 1:00)</div>
+      <video id="cam-live" autoplay muted playsinline style="display:none; margin-bottom:10px"></video>
+      <div class="btn-row" style="margin:0">
+        <button class="btn" id="cam-start">Start camera</button>
+        <button class="btn btn-primary" id="rec-start" style="display:none">● Record</button>
+        <button class="btn" id="rec-stop" style="display:none">■ Stop</button>
+        <span id="rec-timer" class="rec-timer" style="display:none"><span class="rec-dot"></span>1:00</span>
+      </div>
+      <p class="small muted" style="margin-top:8px" id="cam-hint">Prop the phone/laptop at the back corner of the court so the whole half-court is visible.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Or upload a clip</div>
+      <input type="file" id="an-file" accept="video/*">
+      <p class="muted small" style="margin-top:8px">Short clips work best — about a minute of rally play.</p>
+      <div id="an-library"></div>
+    </div>
+  </div>
+
+  <video id="an-video" controls style="display:none; margin-bottom:12px"></video>
+
+  <div id="an-controls" class="card" style="display:none">
+    <div class="form-grid">
+      ${coach
+        ? `<label>Player<select id="an-player"><option value="">—</option>${playerOptions(preselect, { statuses: ['roster', 'tryout'] })}</select></label>`
+        : `<input type="hidden" id="an-player" value="${esc(me ? me.id : '')}">`}
+      <label>Focus<select id="an-focus">
+        <option value="all">Everything</option><option value="footwork">Footwork</option>
+        <option value="smash">Smash</option><option value="serve">Serve</option>
+        <option value="net">Net play</option><option value="defense">Defense</option>
+      </select></label>
+      <label>Label<input type="text" id="an-label" placeholder="e.g. Practice ${fmtDate(new Date().toISOString())}"></label>
+    </div>
+    <div class="btn-row">
+      ${hasApiKey()
+        ? `<button class="btn btn-primary" id="an-go">Analyze with AI</button>`
+        : `<button class="btn" id="an-demo">Preview a sample analysis</button>`}
+      ${coach || me ? '<button class="btn" id="an-save-clip">Save clip to library</button>' : ''}
+      <span class="muted small" id="an-status"></span>
+    </div>
+  </div>
+
+  <div id="an-results"></div>`;
+
+  const liveEl = document.getElementById('cam-live');
+  const videoEl = document.getElementById('an-video');
+  const timerEl = document.getElementById('rec-timer');
+  const startCamBtn = document.getElementById('cam-start');
+  const recBtn = document.getElementById('rec-start');
+  const stopBtn = document.getElementById('rec-stop');
+  const statusEl = document.getElementById('an-status');
+
+  function loadClipBlob(blob, { clipId = null } = {}) {
+    currentBlob = blob;
+    currentClipId = clipId;
+    window.lastClipBlob = blob;
+    videoEl.src = trackUrl(URL.createObjectURL(blob));
+    videoEl.style.display = '';
+    document.getElementById('an-controls').style.display = '';
+    ensureDuration(videoEl); // resolve webm Infinity-duration early so the scrubber works
+    videoEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  startCamBtn.addEventListener('click', async () => {
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false,
+      });
+      liveEl.srcObject = cameraStream;
+      liveEl.style.display = '';
+      startCamBtn.style.display = 'none';
+      recBtn.style.display = '';
+    } catch (err) {
+      document.getElementById('cam-hint').textContent = 'Camera unavailable: ' + err.message + ' — you can still upload a clip.';
+    }
+  });
+
+  recBtn.addEventListener('click', () => {
+    if (!cameraStream) return;
+    const chunks = [];
+    const mime = ['video/webm;codecs=vp9', 'video/webm'].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+    mediaRecorder = new MediaRecorder(cameraStream, mime ? { mimeType: mime } : undefined);
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      loadClipBlob(new Blob(chunks, { type: mediaRecorder?.mimeType || 'video/webm' }));
+      stopCamera();
+      liveEl.style.display = 'none';
+      timerEl.style.display = 'none';
+      recBtn.style.display = 'none';
+      stopBtn.style.display = 'none';
+      startCamBtn.style.display = '';
+    };
+    mediaRecorder.start();
+    recBtn.style.display = 'none';
+    stopBtn.style.display = '';
+    timerEl.style.display = '';
+    let remaining = 60;
+    timerEl.innerHTML = '<span class="rec-dot"></span>1:00';
+    recordTimer = setInterval(() => {
+      remaining--;
+      timerEl.innerHTML = `<span class="rec-dot"></span>0:${String(Math.max(remaining, 0)).padStart(2, '0')}`;
+      if (remaining <= 0) stopBtn.click();
+    }, 1000);
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (recordTimer) { clearInterval(recordTimer); recordTimer = null; }
+    if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  });
+
+  document.getElementById('an-file').addEventListener('change', e => {
+    const f = e.target.files?.[0];
+    if (f) loadClipBlob(f);
+  });
+
+  document.getElementById('an-save-clip')?.addEventListener('click', async () => {
+    if (!currentBlob) return;
+    if (currentClipId) { toast('Already in the library'); return; }
+    const id = uid();
+    try {
+      const dur = await ensureDuration(videoEl);
+      await saveClip({
+        id,
+        playerId: document.getElementById('an-player').value || null,
+        label: document.getElementById('an-label').value.trim() || `Clip ${fmtDate(new Date().toISOString())}`,
+        date: new Date().toISOString(),
+        duration: isFinite(dur) && dur > 0 ? dur : null,
+        blob: currentBlob,
+      });
+      currentClipId = id;
+      toast('Clip saved to library');
+      renderClipLibrary();
+    } catch (err) {
+      toast('Could not save clip: ' + err.message);
+    }
+  });
+
+  async function runAnalysis(demo) {
+    const goBtn = document.getElementById(demo ? 'an-demo' : 'an-go');
+    const results = document.getElementById('an-results');
+    goBtn.disabled = true;
+    results.innerHTML = '';
+    try {
+      let parsed;
+      if (demo) {
+        parsed = demoAnalysis(document.getElementById('an-focus').value);
+      } else {
+        statusEl.textContent = 'Extracting frames…';
+        const frames = await extractFrames(videoEl, 8);
+        statusEl.textContent = `Sending ${frames.length} frames to the AI coach…`;
+        parsed = await analyzeGameplay(frames, document.getElementById('an-focus').value);
+        const playerId = document.getElementById('an-player').value || null;
+        state.sessions.push({
+          id: uid(), playerId, date: new Date().toISOString(),
+          label: document.getElementById('an-label').value.trim() || `Session ${state.sessions.length + 1}`,
+          focus: document.getElementById('an-focus').value,
+          scores: parsed.scores, feedback: parsed.feedback, clipId: currentClipId,
+        });
+        saveState();
+      }
+      statusEl.textContent = '';
+      results.innerHTML = renderAnalysisResults(parsed);
+      results.querySelectorAll('[data-seek]').forEach(el => el.addEventListener('click', () => {
+        const [m, s] = el.dataset.seek.split(':').map(Number);
+        if (!isNaN(m)) videoEl.currentTime = m * 60 + s;
+        videoEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }));
+    } catch (err) {
+      statusEl.textContent = 'Analysis failed: ' + err.message;
+    } finally {
+      goBtn.disabled = false;
+    }
+  }
+
+  document.getElementById('an-go')?.addEventListener('click', () => runAnalysis(false));
+  document.getElementById('an-demo')?.addEventListener('click', () => runAnalysis(true));
+
+  async function renderClipLibrary() {
+    const box = document.getElementById('an-library');
+    const clips = await listClips();
+    // coach sees all; a linked player sees their own; guests see none
+    const visible = coach ? clips : (me ? clips.filter(c => c.playerId === me.id) : []);
+    if (!visible.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `<hr><div class="card-title">Clip library</div>` + visible.slice(0, 8).map(c => `
+      <div class="btn-row" style="margin:5px 0" data-clip="${c.id}">
+        <b>${esc(c.label || 'Clip')}</b>
+        <span class="muted small">${c.playerId ? esc(playerName(c.playerId)) + ' · ' : ''}${fmtDate(c.date)}</span>
+        <button class="btn btn-sm" data-act="load">Load</button>
+        ${coach ? '<button class="btn btn-danger btn-sm" data-act="del">✕</button>' : ''}
+      </div>`).join('');
+    box.querySelectorAll('[data-act="load"]').forEach(btn => btn.addEventListener('click', async () => {
+      const clip = await getClip(btn.closest('[data-clip]').dataset.clip);
+      if (!clip) { toast('Clip missing'); return; }
+      loadClipBlob(clip.blob, { clipId: clip.id });
+      const sel = document.getElementById('an-player');
+      if (clip.playerId && sel.tagName === 'SELECT') sel.value = clip.playerId;
+      if (clip.label) document.getElementById('an-label').value = clip.label;
+    }));
+    box.querySelectorAll('[data-act="del"]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm('Delete this clip?')) return;
+      await deleteClip(btn.closest('[data-clip]').dataset.clip);
+      renderClipLibrary();
+    }));
+  }
+  renderClipLibrary();
+
+  if (loadClipId) {
+    getClip(loadClipId).then(clip => {
+      if (!clip) return;
+      loadClipBlob(clip.blob, { clipId: clip.id });
+      const sel = document.getElementById('an-player');
+      if (clip.playerId && sel.tagName === 'SELECT') sel.value = clip.playerId;
+      if (clip.label) document.getElementById('an-label').value = clip.label;
+    });
+  }
+}
+
+function renderAnalysisResults(parsed) {
+  return `
+  <div class="card">
+    ${parsed.demo ? '<div class="notice">This is a <b>sample</b> analysis so you can see the format — it was not generated from your video and is not saved. Add an API key in Settings for the real thing.</div>' : ''}
+    <div class="card-title">Scores</div>
+    ${skillBars(parsed.scores)}
+    <div class="card-title" style="margin-top:16px">Feedback <span class="muted" style="text-transform:none;letter-spacing:0">— click a card to jump to that moment</span></div>
+    ${parsed.feedback.map(f => `
+      <div class="fb-card fb-${esc(f.type)}" data-seek="${esc(f.timestamp)}">
+        <div class="fb-head"><span class="fb-time">${esc(f.timestamp)}</span> <span class="fb-type">${esc(String(f.type).toUpperCase())}</span> ${esc(f.title)}</div>
+        <div class="fb-body">${esc(f.body)}</div>
+        ${f.tip ? `<div class="fb-tip">Drill: ${esc(f.tip)}</div>` : ''}
+      </div>`).join('')}
+  </div>`;
+}
+
+/* ---------- compare with a pro ---------- */
+
+function renderCompare() {
+  const pros = window.SIQ_PROS || [];
+  const byDisc = {};
+  pros.forEach(pro => { (byDisc[pro.discipline] = byDisc[pro.discipline] || []).push(pro); });
+  const discLabels = { MS: "Men's singles", WS: "Women's singles", MD: "Men's doubles", WD: "Women's doubles", XD: 'Mixed doubles' };
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Compare with a pro</h1><p class="muted">Watch side by side, then let the AI spell out the gaps</p></div>
+  ${hasApiKey() ? '' : '<div class="notice">Side-by-side playback works without a key. AI comparison needs one (Settings).</div>'}
+
+  ${pros.length ? `
+  <div class="card pro-card">
+    <div class="card-title">Pick a pro to study</div>
+    <div class="form-grid">
+      <label>Player<select id="pro-pick"><option value="">—</option>
+        ${Object.entries(byDisc).map(([d, list]) =>
+          `<optgroup label="${discLabels[d] || d}">${list.map(pro => `<option value="${pro.id}">${esc(pro.name)} (${esc(pro.country)})</option>`).join('')}</optgroup>`).join('')}
+      </select></label>
+    </div>
+    <div id="pro-info"></div>
+  </div>` : ''}
+
+  <div class="grid2 compare-grid">
+    <div class="card">
+      <div class="card-title">You</div>
+      <input type="file" id="cmp-you" accept="video/*">
+      <div class="btn-row" id="cmp-you-extra"></div>
+      <video id="cmp-you-video" controls muted style="display:none; margin-top:10px"></video>
+    </div>
+    <div class="card">
+      <div class="card-title">Pro</div>
+      <input type="file" id="cmp-pro" accept="video/*">
+      <div class="btn-row" style="margin:8px 0 0">
+        <input type="url" id="cmp-yt" placeholder="…or paste a YouTube link" style="max-width:260px">
+        <button class="btn btn-sm" id="cmp-yt-go">Embed</button>
+      </div>
+      <p class="muted small" style="margin:8px 0 0">A local clip file gets synced playback and AI comparison; a YouTube embed is watch-only.</p>
+      <div id="cmp-pro-embed" style="margin-top:10px"></div>
+      <video id="cmp-pro-video" controls muted style="display:none; margin-top:10px"></video>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="cmp-sync">▶ Play both</button>
+    <button class="btn" id="cmp-pause">❚❚ Pause both</button>
+    <button class="btn" id="cmp-speed" data-speed="1">Speed: 1×</button>
+    <button class="btn" id="cmp-back">−1 frame</button>
+    <button class="btn" id="cmp-step">+1 frame</button>
+    <button class="btn btn-primary" id="cmp-ai" ${hasApiKey() ? '' : 'disabled'}>AI comparison</button>
+    <span class="muted small" id="cmp-status"></span>
+  </div>
+  <div id="cmp-results"></div>`;
+
+  const youV = document.getElementById('cmp-you-video');
+  const proV = document.getElementById('cmp-pro-video');
+  let youBlob = null, proBlob = null, pickedPro = null;
+
+  const loadSide = (videoEl, blob) => {
+    videoEl.src = trackUrl(URL.createObjectURL(blob));
+    videoEl.style.display = '';
+    videoEl.playbackRate = Number(document.getElementById('cmp-speed').dataset.speed);
+    ensureDuration(videoEl);
+  };
+
+  document.getElementById('cmp-you').addEventListener('change', e => {
+    const f = e.target.files?.[0];
+    if (f) { youBlob = f; loadSide(youV, f); }
+  });
+  document.getElementById('cmp-pro').addEventListener('change', e => {
+    const f = e.target.files?.[0];
+    if (f) { proBlob = f; document.getElementById('cmp-pro-embed').innerHTML = ''; loadSide(proV, f); }
+  });
+
+  document.getElementById('cmp-yt-go').addEventListener('click', () => {
+    const m = /(?:youtube\.com\/(?:watch\?[^#]*v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/.exec(document.getElementById('cmp-yt').value);
+    if (!m) { toast('Could not read that YouTube link'); return; }
+    proBlob = null;
+    proV.pause();
+    proV.style.display = 'none';
+    document.getElementById('cmp-pro-embed').innerHTML =
+      `<iframe width="100%" height="280" src="https://www.youtube-nocookie.com/embed/${m[1]}" title="Pro video" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen style="border:0;border-radius:8px"></iframe>`;
+  });
+
+  // quick sources for "you": last analyzed clip + saved library clips
+  const extra = document.getElementById('cmp-you-extra');
+  if (window.lastClipBlob) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-sm';
+    b.textContent = 'Use clip from Analyze';
+    b.addEventListener('click', () => { youBlob = window.lastClipBlob; loadSide(youV, youBlob); });
+    extra.appendChild(b);
+  }
+  listClips().then(clips => {
+    const me = currentStudent();
+    const visible = isCoach() ? clips : (me ? clips.filter(c => c.playerId === me.id) : []);
+    if (!visible.length) return;
+    const sel = document.createElement('select');
+    sel.style.maxWidth = '240px';
+    sel.innerHTML = `<option value="">Load from library…</option>` +
+      visible.map(c => `<option value="${c.id}">${esc(c.label || 'Clip')}${c.playerId ? ' — ' + esc(playerName(c.playerId)) : ''}</option>`).join('');
+    sel.addEventListener('change', async () => {
+      if (!sel.value) return;
+      const clip = await getClip(sel.value);
+      if (clip) { youBlob = clip.blob; loadSide(youV, clip.blob); }
+    });
+    extra.appendChild(sel);
+  });
+
+  // pro picker info card
+  document.getElementById('pro-pick')?.addEventListener('change', e => {
+    pickedPro = pros.find(pro => pro.id === e.target.value) || null;
+    const box = document.getElementById('pro-info');
+    if (!pickedPro) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <p style="margin:8px 0 4px"><b>${esc(pickedPro.name)}</b> — ${esc(pickedPro.style)} <span class="tag">${esc(pickedPro.era)}</span></p>
+      <p class="small muted" style="margin:0 0 4px">Watch for:</p>
+      <ul class="watchfor">${pickedPro.watchFor.map(w => `<li>${esc(w)}</li>`).join('')}</ul>
+      <a class="btn btn-sm" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${encodeURIComponent(pickedPro.youtubeQuery)}">Find clips on YouTube ↗</a>`;
+  });
+
+  // playback controls
+  const local = () => [youV, proV].filter(v => v.style.display !== 'none');
+  document.getElementById('cmp-sync').addEventListener('click', () => local().forEach(v => v.play()));
+  document.getElementById('cmp-pause').addEventListener('click', () => local().forEach(v => v.pause()));
+  document.getElementById('cmp-speed').addEventListener('click', e => {
+    const next = { '1': '0.5', '0.5': '0.25', '0.25': '1' }[e.target.dataset.speed];
+    e.target.dataset.speed = next;
+    e.target.textContent = `Speed: ${next}×`;
+    local().forEach(v => { v.playbackRate = Number(next); });
+  });
+  const step = dir => local().forEach(v => { v.pause(); v.currentTime = Math.max(0, v.currentTime + dir / 30); });
+  document.getElementById('cmp-step').addEventListener('click', () => step(1));
+  document.getElementById('cmp-back').addEventListener('click', () => step(-1));
+
+  // AI comparison
+  document.getElementById('cmp-ai').addEventListener('click', async () => {
+    const status = document.getElementById('cmp-status');
+    const results = document.getElementById('cmp-results');
+    const btn = document.getElementById('cmp-ai');
+    if (!youBlob || !proBlob) { status.textContent = 'Load both videos first.'; return; }
+    btn.disabled = true;
+    results.innerHTML = '';
+    try {
+      status.textContent = 'Extracting frames from both clips…';
+      const [yourFrames, proFrames] = [await extractFrames(youV, 6), await extractFrames(proV, 6)];
+      status.textContent = 'Asking the AI coach…';
+      const proNotes = pickedPro ? `${pickedPro.name} (${pickedPro.style}). Known for: ${pickedPro.watchFor.join('; ')}` : '';
+      const parsed = await compareWithPro(yourFrames, proFrames, proNotes);
+      status.textContent = '';
+      results.innerHTML = `
+      <div class="card">
+        <div class="card-title">AI comparison</div>
+        <p>${esc(parsed.summary)}</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Area</th><th>You</th><th>The pro</th><th>Fix</th></tr></thead>
+          <tbody>${parsed.differences.map(d => `<tr>
+            <td><b>${esc(d.area)}</b></td>
+            <td class="small">${esc(d.student)}</td>
+            <td class="small">${esc(d.pro)}</td>
+            <td class="small" style="color:var(--accent-dark)">${esc(d.fix)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
+    } catch (err) {
+      status.textContent = 'Comparison failed: ' + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+/* ---------- drill library ---------- */
+
+function renderDrills(_, params) {
+  const drills = window.SIQ_DRILLS || Object.entries(DRILLS).map(([skill, description], i) => ({
+    id: 'd' + i, skill, name: SKILL_LABELS[skill] + ' drill', level: '', minutes: 10, description, target: '',
+  }));
+  const activeSkill = params?.get('skill') || 'all';
+  const me = currentStudent();
+  const weak = me ? improvementAreas(me.id) : [];
+  const recommended = weak.length ? drills.filter(d => weak.some(w => w.skill === d.skill)).slice(0, 4) : [];
+
+  const drillCard = d => `
+    <div class="card">
+      <h3 style="margin-bottom:4px">${esc(d.name)}</h3>
+      <p style="margin-bottom:6px">
+        <span class="tag tag-accent">${SKILL_LABELS[d.skill] || esc(d.skill)}</span>
+        ${d.level ? `<span class="tag">${esc(d.level)}</span>` : ''}
+        ${d.minutes ? `<span class="tag">${d.minutes} min</span>` : ''}
+      </p>
+      <p class="small">${esc(d.description)}</p>
+      ${d.target ? `<p class="small" style="color:var(--accent-dark)"><b>Target:</b> ${esc(d.target)}</p>` : ''}
+    </div>`;
+
+  const filtered = drills.filter(d => activeSkill === 'all' || d.skill === activeSkill);
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Drills</h1><p class="muted">Standard drills the team can run at practice</p></div>
+
+  ${recommended.length ? `
+    <h2>Recommended for you</h2>
+    <p class="muted small">Based on your current focus areas: ${weak.map(w => w.label).join(', ')}</p>
+    <div class="grid2">${recommended.map(drillCard).join('')}</div>
+    <hr>` : ''}
+
+  <div class="filter-row">
+    <button class="filter-chip ${activeSkill === 'all' ? 'active' : ''}" data-skill="all">All</button>
+    ${SKILLS.map(s => `<button class="filter-chip ${activeSkill === s ? 'active' : ''}" data-skill="${s}">${SKILL_LABELS[s]}</button>`).join('')}
+  </div>
+  <div class="grid2">${filtered.map(drillCard).join('') || '<p class="muted">No drills for this filter.</p>'}</div>`;
+
+  VIEW.querySelectorAll('.filter-chip').forEach(b => b.addEventListener('click', () => {
+    location.hash = b.dataset.skill === 'all' ? '#/drills' : `#/drills?skill=${b.dataset.skill}`;
+  }));
+}
+
+/* ---------- settings (coach) ---------- */
+
+function renderSettings() {
+  const s = state.settings;
+  const provider = AI_PROVIDERS[s.provider] ? s.provider : 'anthropic';
+  const def = AI_PROVIDERS[provider];
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Settings</h1></div>
+
+  <div class="card">
+    <div class="card-title">Team</div>
+    <label style="max-width:300px">Team name<input type="text" id="set-team" value="${esc(s.teamName)}"></label>
+    <div class="btn-row"><button class="btn btn-sm" id="set-team-save">Save</button></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">AI coach</div>
+    <p class="small muted">Powers video analysis, pro comparison, and AI coach notes. Everything else works without it.</p>
+    <div class="form-grid">
+      <label>Provider<select id="ai-provider">
+        ${Object.entries(AI_PROVIDERS).map(([k, v]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${v.label}</option>`).join('')}
+      </select></label>
+      <label>Model<input type="text" id="ai-model" list="ai-models" value="${esc(s.model)}" placeholder="${esc(def.defaultModel)}">
+        <datalist id="ai-models">${def.models.map(m => `<option value="${m}">`).join('')}</datalist></label>
+      ${def.needsBaseUrl ? `<label>Base URL<input type="url" id="ai-baseurl" value="${esc(s.baseUrl)}" placeholder="${esc(def.defaultBaseUrl)}"></label>` : ''}
+    </div>
+    <label>API key<input type="password" id="ai-key" value="${esc(s.apiKey)}" placeholder="Paste your key" autocomplete="off"></label>
+    <label class="small" style="display:flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer"><input type="checkbox" id="ai-key-show" style="width:auto;margin:0"> Show key</label>
+    <p class="small muted" style="margin-top:6px">${esc(def.help)}</p>
+    <div class="btn-row">
+      <button class="btn btn-primary btn-sm" id="ai-save">Save</button>
+      <button class="btn btn-sm" id="ai-test">Test key</button>
+      <span class="small muted" id="ai-status"></span>
+    </div>
+    <p class="small muted">The key is stored only in this browser and sent only to the provider above. It is stripped from exported backups. On a shared device, clear it when you're done.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Data</div>
+    <p class="small muted">Everything lives in this browser. Export a backup to move or share the team data (video clips aren't included — they stay on this device).</p>
+    <div class="btn-row">
+      <button class="btn btn-sm" id="data-export">Export backup</button>
+      <button class="btn btn-sm" id="data-csv">Export matches (CSV)</button>
+      <button class="btn btn-sm" id="data-import">Import backup…</button>
+      <input type="file" id="data-file" accept="application/json" style="display:none">
+      <button class="btn btn-sm" id="data-sample">Load sample data</button>
+      <button class="btn btn-danger btn-sm" id="data-reset">Reset everything…</button>
+    </div>
+    <p class="small muted" id="data-usage"></p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Coach passcode</div>
+    <div class="form-grid">
+      <label>New passcode<input type="password" id="pass-1" inputmode="numeric" autocomplete="new-password"></label>
+      <label>Repeat<input type="password" id="pass-2" inputmode="numeric" autocomplete="new-password"></label>
+    </div>
+    <div class="btn-row"><button class="btn btn-sm" id="pass-save">Change passcode</button><span class="small muted" id="pass-status"></span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">About</div>
+    <p class="small muted">ShuttleIQ is a local-first app: no server, no accounts — data stays in this browser. Use Export/Import to move it between devices. Built for school badminton teams: tryout scouting, form tracking, position fit, lineups, and AI video coaching.</p>
+  </div>`;
+
+  document.getElementById('set-team-save').addEventListener('click', () => {
+    s.teamName = document.getElementById('set-team').value.trim() || 'ShuttleIQ';
+    saveState();
+    toast('Team name saved');
+    buildNav();
+  });
+
+  const saveAI = () => {
+    s.model = document.getElementById('ai-model').value.trim();
+    s.apiKey = document.getElementById('ai-key').value.trim();
+    const baseEl = document.getElementById('ai-baseurl');
+    if (baseEl) s.baseUrl = baseEl.value.trim();
+    saveState();
+  };
+  document.getElementById('ai-provider').addEventListener('change', e => {
+    saveAI(); // keep whatever was typed — switching provider shouldn't eat an unsaved key
+    s.provider = e.target.value;
+    s.model = ''; // model names don't carry over between providers
+    saveState();
+    renderSettings();
+  });
+  document.getElementById('ai-key-show').addEventListener('change', e => {
+    document.getElementById('ai-key').type = e.target.checked ? 'text' : 'password';
+  });
+  document.getElementById('ai-save').addEventListener('click', () => { saveAI(); toast('AI settings saved'); });
+  document.getElementById('ai-test').addEventListener('click', async () => {
+    saveAI();
+    const status = document.getElementById('ai-status');
+    status.textContent = 'Testing…';
+    try {
+      await testAIKey();
+      status.textContent = `✓ Working (${aiConfig().model})`;
+    } catch (err) {
+      status.textContent = '✗ ' + err.message;
+    }
+  });
+
+  document.getElementById('data-export').addEventListener('click', exportData);
+  document.getElementById('data-csv').addEventListener('click', () => {
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [['date', 'player', 'partner', 'discipline', 'opponent', 'score', 'result', 'context', 'notes'].map(q).join(',')];
+    for (const m of [...state.matches].sort((a, b) => (a.date < b.date ? -1 : 1))) {
+      rows.push([m.date, playerName(m.playerId), m.partnerId ? playerName(m.partnerId) : '', m.discipline, m.opponent, m.score, m.result, m.context || 'season', m.notes].map(q).join(','));
+    }
+    const blob = new Blob(['﻿' + rows.join('\r\n')], { type: 'text/csv' }); // BOM so Excel opens it cleanly
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `shuttleiq-matches-${todayISO()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  document.getElementById('data-import').addEventListener('click', () => document.getElementById('data-file').click());
+  document.getElementById('data-file').addEventListener('change', e => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!confirm('Importing replaces the team data on this device (your API key and passcode are kept). Continue?')) return;
+    importData(f, err => {
+      if (err) { toast('Import failed: ' + err.message); return; }
+      toast('Backup imported');
+      route();
+    });
+  });
+  document.getElementById('data-sample').addEventListener('click', () => {
+    if (state.players.length && !confirm('This replaces current players/matches with sample data. Continue?')) return;
+    loadSampleData();
+    toast('Sample data loaded');
+    route();
+  });
+  document.getElementById('data-reset').addEventListener('click', () => {
+    if (!confirm('Delete ALL players, matches, analyses, rosters, and settings on this device?')) return;
+    if (!confirm('Really sure? There is no undo.')) return;
+    resetData();
+    setRole(null);
+    location.hash = '#/';
+  });
+
+  // storage meter — coaches should know how much room clips are taking
+  (async () => {
+    const el = document.getElementById('data-usage');
+    try {
+      const clips = await listClips();
+      let line = `${state.players.length} players · ${state.matches.length} matches · ${clips.length} saved clip${clips.length === 1 ? '' : 's'}`;
+      const est = await navigator.storage?.estimate?.();
+      if (est?.usage != null) line += ` · ${(est.usage / 1048576).toFixed(1)} MB of browser storage used`;
+      if (el) el.textContent = line;
+    } catch { /* meter is best-effort */ }
+  })();
+
+  document.getElementById('pass-save').addEventListener('click', () => {
+    const a = document.getElementById('pass-1').value.trim();
+    const b = document.getElementById('pass-2').value.trim();
+    const status = document.getElementById('pass-status');
+    if (a.length < 4) { status.textContent = 'Use at least 4 digits.'; return; }
+    if (a !== b) { status.textContent = 'They don\'t match.'; return; }
+    setCoachPass(a);
+    status.textContent = '✓ Changed';
+    toast('Passcode updated');
+  });
+}
+
+/* ---------- boot ---------- */
+
+// offline support once opened over http(s) — gyms have bad wifi
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+// ask the browser not to evict clips/team data under storage pressure
+navigator.storage?.persist?.().catch(() => {});
+
+window.addEventListener('hashchange', route);
+route();
