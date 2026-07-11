@@ -1,10 +1,10 @@
-/* ShuttleIQ v6.1 — inline SVG charts, dependency-free, tuned to the court-modern theme.
+/* ShuttleIQ v6.2 — inline SVG charts, dependency-free, tuned to the varsity-court theme.
    Single-series marks: one validated accent, recessive grid, ink for text. */
 
-const CHART_INK = '#3f544a';     /* line work (ink-2) */
+const CHART_INK = '#45544b';     /* line work (ink-2) */
 const CHART_ACCENT = '#10714a';  /* data accent (validated vs light surfaces) */
-const CHART_FAINT = '#e3e9e5';   /* recessive grid */
-const CHART_MUTED = '#66786e';   /* axis labels */
+const CHART_FAINT = '#e2dfd2';   /* recessive grid on warm paper */
+const CHART_MUTED = '#6b7a70';   /* axis labels */
 
 /* Hexagonal skill radar. profile: {footwork, smash, ...} 0-100 (nulls allowed). */
 function radarSVG(profile, { size = 280 } = {}) {

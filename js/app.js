@@ -2,6 +2,7 @@
 
 const VIEW = document.getElementById('view');
 const NAV = document.getElementById('topnav');
+const TABBAR = document.getElementById('tabbar');
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -93,11 +94,30 @@ function renderRoot() {
 
 /* ---------- navigation bar ---------- */
 
+function navIcon(name) {
+  const P = {
+    home: '<path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/>',
+    players: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.4 3.4-5 6.5-5s5.7 1.6 6.5 5"/><circle cx="17.5" cy="9.5" r="2.5"/><path d="M16 15.2c2.6.3 4.6 1.7 5.5 4.8"/>',
+    matches: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2.5v3M16 2.5v3M3 9.5h18M7.5 14l2.5 2.5 5-5"/>',
+    tryouts: '<path d="M12 3l2.6 5.6 6.4.8-4.7 4.3 1.2 6.3-5.5-3.1-5.5 3.1 1.2-6.3L3 9.4l6.4-.8z"/>',
+    rosters: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="4" cy="18" r="1.3"/>',
+    insights: '<path d="M4 20V10M9 20V4M14 20v-7M19 20V8"/>',
+    team: '<path d="M12 3l8 3v6c0 5-3.5 7.8-8 9-4.5-1.2-8-4-8-9V6z"/>',
+    analyze: '<path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>',
+    compare: '<path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5M12 1v22"/>',
+    drills: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
+    more: '<circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>',
+  };
+  return `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
+}
+
 function buildNav() {
   const role = getRole();
   const link = (k, label) => `<a data-nav="${k}" href="#/${k === 'home' ? '' : k}">${label}</a>`;
-  let links = '';
-  let right = '';
+  const tab = (k, label, ic) => `<a class="tab" data-nav="${k}" href="#/${k === 'home' ? '' : k}">${navIcon(ic)}<span>${label}</span></a>`;
+  const sheetRow = (k, label, ic) => `<a class="sheet-row" data-nav="${k}" href="#/${k}">${navIcon(ic)}${label}</a>`;
+  let links = '', right = '', tabs = '';
   if (role === 'coach') {
     links = [
       link('home', 'Dashboard'), link('insights', 'Insights'), link('players', 'Players'),
@@ -105,14 +125,24 @@ function buildNav() {
       link('analyze', 'Analyze'), link('compare', 'Compare'), link('settings', 'Settings'),
     ].join('');
     right = `<button class="nav-role" data-logout>Log out</button>`;
+    tabs = tab('home', 'Home', 'home') + tab('players', 'Players', 'players')
+      + tab('matches', 'Matches', 'matches') + tab('tryouts', 'Tryouts', 'tryouts')
+      + `<button class="tab" id="tab-more" aria-expanded="false">${navIcon('more')}<span>More</span></button>`
+      + `<div class="more-sheet" id="more-sheet" hidden>`
+      + sheetRow('rosters', 'Rosters', 'rosters') + sheetRow('insights', 'Insights', 'insights')
+      + sheetRow('analyze', 'Analyze', 'analyze') + sheetRow('compare', 'Compare', 'compare')
+      + sheetRow('settings', 'Settings', 'settings')
+      + `</div>`;
   } else if (role === 'student') {
     links = [link('home', 'Home'), link('team', 'Team'), link('analyze', 'Analyze'), link('compare', 'Compare'), link('drills', 'Drills')].join('');
     const me = currentStudent();
     right = `<button class="nav-role" data-logout>${me ? esc(me.name.split(' ')[0]) + ' · ' : ''}Sign out</button>`;
+    tabs = tab('home', 'Home', 'home') + tab('team', 'Team', 'team') + tab('analyze', 'Analyze', 'analyze')
+      + tab('compare', 'Compare', 'compare') + tab('drills', 'Drills', 'drills');
   } else {
     right = `<a class="nav-role" style="text-decoration:none" href="#/login">Log in</a>`;
   }
-  const mark = `<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#10714a"/><path d="M16 5.5l5 13.5H11z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="23" r="3.2" fill="none" stroke="#fff" stroke-width="1.8"/></svg>`;
+  const mark = `<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#f2efe8"/><path d="M16 5.5l5 13.5H11z" fill="none" stroke="#0d3b26" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="23" r="3.2" fill="none" stroke="#0d3b26" stroke-width="1.8"/></svg>`;
   NAV.innerHTML = `
     <div class="nav-row">
       <a class="logo" href="#/">${mark} ShuttleIQ</a>
@@ -120,11 +150,21 @@ function buildNav() {
       ${right}
     </div>
     ${links ? `<div class="nav-links">${links}</div>` : ''}`;
+  TABBAR.innerHTML = tabs;
   NAV.querySelector('[data-logout]')?.addEventListener('click', logout);
+  document.getElementById('tab-more')?.addEventListener('click', () => {
+    const sheet = document.getElementById('more-sheet');
+    const open = sheet.hidden;
+    sheet.hidden = !open;
+    document.getElementById('tab-more').setAttribute('aria-expanded', String(open));
+  });
 }
 
 function markNav(name) {
-  NAV.querySelectorAll('a[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === name));
+  document.querySelectorAll('a[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === name));
+  // light up "More" when the active route lives inside its sheet
+  const moreBtn = document.getElementById('tab-more');
+  if (moreBtn) moreBtn.classList.toggle('active', !!document.querySelector(`#more-sheet a[data-nav="${name}"]`));
 }
 
 function logout() { setRole(null); location.hash = '#/'; route(); }
@@ -212,23 +252,50 @@ function playerLink(id) {
 /* ---------- landing / login / coach gate ---------- */
 
 function renderLanding() {
-  const icon = paths => `<span class="feat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg></span>`;
-  const camIcon = '<path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>';
-  const boardIcon = '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>';
-  const trophyIcon = '<path d="M8 21h8M12 17v4M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4a2 2 0 0 0 2 4h1M17 6h3a2 2 0 0 1-2 4h-1"/>';
+  const check = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>';
+  const courtArt = `
+    <svg viewBox="0 0 340 244" fill="none" aria-hidden="true">
+      <rect x="10" y="10" width="320" height="224" rx="8" stroke="currentColor" stroke-width="2.5"/>
+      <line x1="34" y1="10" x2="34" y2="234" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+      <line x1="306" y1="10" x2="306" y2="234" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+      <line x1="10" y1="34" x2="330" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+      <line x1="10" y1="210" x2="330" y2="210" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+      <line x1="128" y1="10" x2="128" y2="234" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+      <line x1="212" y1="10" x2="212" y2="234" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+      <line x1="128" y1="122" x2="10" y2="122" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+      <line x1="212" y1="122" x2="330" y2="122" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+      <line x1="170" y1="6" x2="170" y2="238" stroke="currentColor" stroke-width="3"/>
+      <path d="M40 196 C 110 60, 210 52, 288 88" stroke="#c9932e" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
+      <g transform="translate(288 88) rotate(38)">
+        <path d="M0 0l7 -18h-14z" fill="#f2efe8" stroke="#c9932e" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="0" cy="3.5" r="4" fill="#c9932e"/>
+      </g>
+    </svg>`;
+  const points = [
+    'AI feedback on 60-second clips',
+    'Live-ranked tryout scoreboard',
+    'Win/loss and form tracking',
+    'Position fit & team depth chart',
+    'One-tap lineup suggestions',
+    'Works offline · installs on phones',
+  ];
   VIEW.innerHTML = `
   <div class="landing">
-    <div class="landing-badge"><svg width="38" height="38" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4.5l5.5 15H10.5z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="24" r="3.6" fill="none" stroke="#fff" stroke-width="2"/></svg></div>
-    <h1>ShuttleIQ</h1>
-    <p class="lead">Film your game and get AI coaching. Score tryouts, track every player's form, and build lineups — all saved on this device.</p>
-    <div class="btn-row center">
-      <a class="btn btn-primary btn-lg" href="#/login">Enter as player</a>
-      <a class="btn btn-lg" href="#/coach">Coach login</a>
+    <div class="hero">
+      <div class="hero-copy">
+        <div class="hero-kicker">ShuttleIQ · Team badminton</div>
+        <h1>Run your team like a pro program.</h1>
+        <p class="lead">Film a rally and get AI coaching. Score tryouts as they happen. Know every player's form — and pick lineups with receipts.</p>
+        <div class="btn-row" style="margin:0">
+          <a class="btn btn-primary btn-lg" href="#/login">Enter as player</a>
+          <a class="btn btn-lg" href="#/coach">Coach login</a>
+        </div>
+        <p class="hero-trust"><b>Free</b> · no accounts · your data stays on this device</p>
+      </div>
+      <div class="hero-art">${courtArt}</div>
     </div>
-    <div class="grid3 landing-feats">
-      <div class="card">${icon(camIcon)}<h3>AI game analysis</h3><p>Record a minute of play and get scored, timestamped feedback — or compare yourself with a pro.</p></div>
-      <div class="card">${icon(boardIcon)}<h3>Tryout scouting</h3><p>Score prospects drill by drill, log their matches, and rank them live on the tryout board.</p></div>
-      <div class="card">${icon(trophyIcon)}<h3>Form & rosters</h3><p>Win-rate trends, position fit, and one-click lineup suggestions from real match data.</p></div>
+    <div class="hero-points">
+      ${points.map(p => `<div class="point">${check}${p}</div>`).join('')}
     </div>
   </div>`;
 }
@@ -355,48 +422,61 @@ function renderDashboard() {
     <p class="muted">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
   </div>
 
-  <div class="grid4">
-    <div class="card stat"><div class="stat-num">${roster.length}</div><div class="stat-label">Roster players</div></div>
-    <div class="card stat"><div class="stat-num">${wins}–${losses}</div><div class="stat-label">Team record</div></div>
-    <div class="card stat"><div class="stat-num">${rate == null ? '—' : rate + '%'}</div><div class="stat-label">Win rate</div></div>
-    <div class="card stat"><div class="stat-num">${tryouts.length}</div><div class="stat-label">Tryout prospects${tryouts.length ? ' <a class="small" href="#/tryouts">→</a>' : ''}</div></div>
+  <div class="scoreboard">
+    <div class="sb-item"><div class="sb-num">${roster.length}</div><div class="sb-label">Roster</div></div>
+    <div class="sb-item"><div class="sb-num">${wins}–${losses}</div><div class="sb-label">Record</div></div>
+    <div class="sb-item"><div class="sb-num gold">${rate == null ? '—' : rate + '%'}</div><div class="sb-label">Win rate</div></div>
+    <div class="sb-item"><div class="sb-num">${tryouts.length}</div><div class="sb-label">${tryouts.length ? '<a href="#/tryouts">Prospects</a>' : 'Prospects'}</div></div>
   </div>
 
-  ${alerts.length ? `<div class="card section"><div class="card-title">Needs attention</div>${alerts.map(a => `<p style="margin:4px 0">${a}</p>`).join('')}</div>` : ''}
-
-  <div class="grid2 section">
-    <div class="card">
-      <div class="card-title">In form</div>
-      ${inForm.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Player</th><th>Last 5</th><th>Trend</th><th></th></tr></thead>
-        <tbody>${inForm.map(({ p, form }) => `<tr>
-          <td>${playerLink(p.id)}</td>
-          <td>${form.recentWins}/${form.recentTotal} ${wlDots(p.id, 5)}</td>
-          <td>${trendArrow(form)}</td>
-          <td>${sparklineSVG(playerMatches(p.id))}</td>
-        </tr>`).join('')}</tbody></table></div>`
-      : '<p class="muted">Log matches to see who\'s hot.</p>'}
+  <div class="dash-grid section">
+    <div class="dash-main">
+      ${alerts.length ? `<div class="card"><div class="card-title">Needs attention</div>${alerts.map(a => `<p style="margin:4px 0">${a}</p>`).join('')}</div>` : ''}
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">In form</div>
+          ${inForm.length ? `<div class="table-wrap"><table>
+            <thead><tr><th>Player</th><th>Last 5</th><th>Trend</th></tr></thead>
+            <tbody>${inForm.map(({ p, form }) => `<tr>
+              <td>${playerLink(p.id)}</td>
+              <td>${form.recentWins}/${form.recentTotal} ${wlDots(p.id, 5)}</td>
+              <td>${trendArrow(form)}</td>
+            </tr>`).join('')}</tbody></table></div>`
+          : '<p class="muted">Log matches to see who\'s hot.</p>'}
+        </div>
+        <div class="card">
+          <div class="card-title">Latest matches</div>
+          ${recent.length ? `<div class="table-wrap"><table>
+            <thead><tr><th>Date</th><th>Player</th><th>Opponent</th><th></th></tr></thead>
+            <tbody>${recent.map(m => `<tr>
+              <td class="muted">${fmtDate(m.date)}</td>
+              <td>${playerLink(m.playerId)}${m.partnerId ? ' / ' + playerLink(m.partnerId) : ''}</td>
+              <td>${esc(m.opponent)}</td>
+              <td>${resultChip(m.result)}</td>
+            </tr>`).join('')}</tbody></table></div>`
+          : '<p class="muted">No matches logged yet.</p>'}
+        </div>
+      </div>
+      ${roster.length ? `<div class="card"><div class="card-title">Season trajectory</div>
+        ${state.matches.length >= 2 ? sparklineSVG([...teamTrend()].reverse(), { w: 640, h: 56 }) : '<p class="muted">Log a few matches to see the season curve.</p>'}
+      </div>` : ''}
     </div>
-    <div class="card">
-      <div class="card-title">Latest matches</div>
-      ${recent.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Date</th><th>Player</th><th>Opponent</th><th></th></tr></thead>
-        <tbody>${recent.map(m => `<tr>
-          <td class="muted">${fmtDate(m.date)}</td>
-          <td>${playerLink(m.playerId)}${m.partnerId ? ' / ' + playerLink(m.partnerId) : ''}</td>
-          <td>${esc(m.opponent)}</td>
-          <td>${resultChip(m.result)}</td>
-        </tr>`).join('')}</tbody></table></div>`
-      : '<p class="muted">No matches logged yet.</p>'}
-    </div>
-  </div>
-
-  <div class="btn-row section">
-    <a class="btn btn-primary" href="#/matches">Log a match</a>
-    <a class="btn" href="#/tryouts">Score tryouts</a>
-    <a class="btn" href="#/rosters">Build a roster</a>
-    <a class="btn" href="#/analyze">Analyze video</a>
-    <a class="btn" href="#/insights">Team insights</a>
+    <aside class="dash-rail">
+      <div class="card">
+        <div class="card-title">Quick actions</div>
+        <div class="rail-actions">
+          <a class="btn" href="#/matches">Log a match</a>
+          <a class="btn" href="#/tryouts">Score tryouts</a>
+          <a class="btn" href="#/rosters">Build a roster</a>
+          <a class="btn" href="#/analyze">Analyze video</a>
+          <a class="btn" href="#/insights">Team insights</a>
+        </div>
+      </div>
+      ${tryouts.length ? `<div class="card"><div class="card-title">Tryouts open</div>
+        <p class="small" style="margin-bottom:8px">${tryouts.length} prospect${tryouts.length === 1 ? '' : 's'} waiting on scores or a decision.</p>
+        <a class="btn btn-primary btn-sm" href="#/tryouts">Open the board</a>
+      </div>` : ''}
+    </aside>
   </div>`;
 }
 
