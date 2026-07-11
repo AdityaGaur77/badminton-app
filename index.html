@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https:; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <!-- file: sources activate only when index.html is opened straight from disk
+       (Firefox treats each local file as a unique origin, so 'self' alone breaks
+       double-click usage); served over http(s) they grant nothing loadable. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file:; worker-src 'self'; style-src 'self' 'unsafe-inline' file:; img-src 'self' data: file:; media-src 'self' blob: file:; connect-src 'self' https:; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>ShuttleIQ — Badminton Team Manager</title>
   <meta name="description" content="AI badminton coaching and team management: analyze gameplay, scout tryouts, track form, and build rosters.">
   <meta name="theme-color" content="#147a4d">

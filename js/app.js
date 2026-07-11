@@ -112,7 +112,14 @@ function buildNav() {
   } else {
     right = `<a class="nav-role" style="text-decoration:none" href="#/login">Log in</a>`;
   }
-  NAV.innerHTML = `<a class="logo" href="#/"><span class="mark">◆</span> ShuttleIQ</a>${links}<span class="nav-spacer"></span>${right}`;
+  const mark = `<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#10714a"/><path d="M16 5.5l5 13.5H11z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="23" r="3.2" fill="none" stroke="#fff" stroke-width="1.8"/></svg>`;
+  NAV.innerHTML = `
+    <div class="nav-row">
+      <a class="logo" href="#/">${mark} ShuttleIQ</a>
+      <span class="nav-spacer"></span>
+      ${right}
+    </div>
+    ${links ? `<div class="nav-links">${links}</div>` : ''}`;
   NAV.querySelector('[data-logout]')?.addEventListener('click', logout);
 }
 
@@ -205,9 +212,13 @@ function playerLink(id) {
 /* ---------- landing / login / coach gate ---------- */
 
 function renderLanding() {
+  const icon = paths => `<span class="feat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg></span>`;
+  const camIcon = '<path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>';
+  const boardIcon = '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>';
+  const trophyIcon = '<path d="M8 21h8M12 17v4M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4a2 2 0 0 0 2 4h1M17 6h3a2 2 0 0 1-2 4h-1"/>';
   VIEW.innerHTML = `
   <div class="landing">
-    <div class="landing-badge">◆</div>
+    <div class="landing-badge"><svg width="38" height="38" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4.5l5.5 15H10.5z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="24" r="3.6" fill="none" stroke="#fff" stroke-width="2"/></svg></div>
     <h1>ShuttleIQ</h1>
     <p class="lead">Film your game and get AI coaching. Score tryouts, track every player's form, and build lineups — all saved on this device.</p>
     <div class="btn-row center">
@@ -215,9 +226,9 @@ function renderLanding() {
       <a class="btn btn-lg" href="#/coach">Coach login</a>
     </div>
     <div class="grid3 landing-feats">
-      <div class="card"><h3>AI game analysis</h3><p>Record a minute of play and get scored, timestamped feedback — or compare yourself with a pro.</p></div>
-      <div class="card"><h3>Tryout scouting</h3><p>Score prospects drill by drill, log their matches, and rank them live on the tryout board.</p></div>
-      <div class="card"><h3>Form & rosters</h3><p>Win-rate trends, position fit, and one-click lineup suggestions from real match data.</p></div>
+      <div class="card">${icon(camIcon)}<h3>AI game analysis</h3><p>Record a minute of play and get scored, timestamped feedback — or compare yourself with a pro.</p></div>
+      <div class="card">${icon(boardIcon)}<h3>Tryout scouting</h3><p>Score prospects drill by drill, log their matches, and rank them live on the tryout board.</p></div>
+      <div class="card">${icon(trophyIcon)}<h3>Form & rosters</h3><p>Win-rate trends, position fit, and one-click lineup suggestions from real match data.</p></div>
     </div>
   </div>`;
 }
