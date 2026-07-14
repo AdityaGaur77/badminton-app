@@ -11,6 +11,7 @@ const DEFAULT_STATE = {
     baseUrl: '',           // OpenAI-compatible endpoints only
     teamName: 'ShuttleIQ',
     coachPass: '',         // hash of the coach passcode; '' means not set up yet
+    theme: 'midnight',     // 'midnight' | 'court' | 'clean'
   },
   players: [],   // {id, name, year, hand, status:'roster'|'tryout'|'cut', tryoutScores, aiNote, createdAt}
   matches: [],   // {id, playerId, partnerId, date, opponent, discipline, result, score, ratings, notes, context}
@@ -19,6 +20,20 @@ const DEFAULT_STATE = {
 };
 
 let state = loadState();
+
+/* ---------- theme ----------
+   Applied as early as possible (this file loads first) to avoid a flash. */
+
+const THEME_META_COLORS = { midnight: '#0e1210', court: '#0d3b26', clean: '#ffffff' };
+
+function applyTheme(name) {
+  const t = THEME_META_COLORS[name] ? name : 'midnight';
+  state.settings.theme = t;
+  document.documentElement.dataset.theme = t;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_META_COLORS[t]);
+}
+
+applyTheme(state.settings.theme);
 
 /* Build a valid state from untrusted parsed JSON (imports, old versions):
    only known keys are picked, and each must have the right shape. */
@@ -34,6 +49,7 @@ function mergeState(parsed) {
       baseUrl: str(s.baseUrl),
       teamName: str(s.teamName) || base.settings.teamName,
       coachPass: str(s.coachPass),
+      theme: ['midnight', 'court', 'clean'].includes(s.theme) ? s.theme : base.settings.theme,
     },
     players: Array.isArray(parsed.players) ? parsed.players : [],
     matches: Array.isArray(parsed.matches) ? parsed.matches : [],

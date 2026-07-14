@@ -108,6 +108,7 @@ function navIcon(name) {
     drills: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
     more: '<circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>',
+    theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18c-2.5-2-4-5.4-4-9s1.5-7 4-9z" fill="currentColor" stroke="none"/>',
   };
   return `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 }
@@ -142,16 +143,21 @@ function buildNav() {
   } else {
     right = `<a class="nav-role" style="text-decoration:none" href="#/login">Log in</a>`;
   }
-  const mark = `<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#f2efe8"/><path d="M16 5.5l5 13.5H11z" fill="none" stroke="#0d3b26" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="23" r="3.2" fill="none" stroke="#0d3b26" stroke-width="1.8"/></svg>`;
+  const mark = `<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M16 5.5l5 13.5H11z" fill="none" stroke="var(--on-accent)" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="23" r="3.2" fill="none" stroke="var(--on-accent)" stroke-width="1.8"/></svg>`;
   NAV.innerHTML = `
     <div class="nav-row">
       <a class="logo" href="#/">${mark} ShuttleIQ</a>
       <span class="nav-spacer"></span>
+      <button class="nav-theme" data-theme-cycle title="Switch theme" aria-label="Switch theme">${navIcon('theme')}</button>
       ${right}
     </div>
     ${links ? `<div class="nav-links">${links}</div>` : ''}`;
   TABBAR.innerHTML = tabs;
   NAV.querySelector('[data-logout]')?.addEventListener('click', logout);
+  NAV.querySelector('[data-theme-cycle]').addEventListener('click', () => {
+    const order = ['midnight', 'court', 'clean'];
+    setTheme(order[(order.indexOf(state.settings.theme) + 1) % order.length]);
+  });
   document.getElementById('tab-more')?.addEventListener('click', () => {
     const sheet = document.getElementById('more-sheet');
     const open = sheet.hidden;
@@ -168,6 +174,14 @@ function markNav(name) {
 }
 
 function logout() { setRole(null); location.hash = '#/'; route(); }
+
+const THEME_LABELS = { midnight: 'Midnight', court: 'Court', clean: 'Clean' };
+
+function setTheme(name) {
+  applyTheme(name);
+  saveState();
+  toast('Theme: ' + THEME_LABELS[state.settings.theme]);
+}
 
 /* ---------- shared UI builders ---------- */
 
@@ -265,10 +279,10 @@ function renderLanding() {
       <line x1="128" y1="122" x2="10" y2="122" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
       <line x1="212" y1="122" x2="330" y2="122" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
       <line x1="170" y1="6" x2="170" y2="238" stroke="currentColor" stroke-width="3"/>
-      <path d="M40 196 C 110 60, 210 52, 288 88" stroke="#c9932e" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
+      <path d="M40 196 C 110 60, 210 52, 288 88" stroke="var(--art-accent)" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
       <g transform="translate(288 88) rotate(38)">
-        <path d="M0 0l7 -18h-14z" fill="#f2efe8" stroke="#c9932e" stroke-width="2" stroke-linejoin="round"/>
-        <circle cx="0" cy="3.5" r="4" fill="#c9932e"/>
+        <path d="M0 0l7 -18h-14z" fill="var(--bg)" stroke="var(--art-accent)" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="0" cy="3.5" r="4" fill="var(--art-accent)"/>
       </g>
     </svg>`;
   const points = [
@@ -1825,8 +1839,24 @@ function renderSettings() {
   </div>
 
   <div class="card">
+    <div class="card-title">Appearance</div>
+    <div class="theme-row">
+      ${Object.entries(THEME_LABELS).map(([k, label]) => `
+        <button class="theme-opt ${state.settings.theme === k ? 'active' : ''}" data-set-theme="${k}">
+          <span class="theme-dot" style="background:${{ midnight: '#c6ef55', court: '#0d3b26', clean: '#10714a' }[k]}"></span>${label}
+        </button>`).join('')}
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-title">AI coach</div>
     <p class="small muted">Powers video analysis, pro comparison, and AI coach notes. Everything else works without it.</p>
+    <div class="btn-row" style="margin-top:4px">
+      <span class="small muted">Free setups:</span>
+      <button class="btn btn-sm" data-ai-preset="gemini">Google Gemini</button>
+      <button class="btn btn-sm" data-ai-preset="openrouter">OpenRouter</button>
+      <button class="btn btn-sm" data-ai-preset="groq">Groq</button>
+    </div>
     <div class="form-grid">
       <label>Provider<select id="ai-provider">
         ${Object.entries(AI_PROVIDERS).map(([k, v]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${v.label}</option>`).join('')}
@@ -1898,6 +1928,28 @@ function renderSettings() {
   document.getElementById('ai-key-show').addEventListener('change', e => {
     document.getElementById('ai-key').type = e.target.checked ? 'text' : 'password';
   });
+
+  VIEW.querySelectorAll('[data-set-theme]').forEach(b => b.addEventListener('click', () => {
+    setTheme(b.dataset.setTheme);
+    renderSettings();
+  }));
+
+  const AI_PRESETS = {
+    gemini: { provider: 'gemini', model: '', baseUrl: '', note: 'Now paste a free key from aistudio.google.com and hit Test.' },
+    openrouter: { provider: 'openai', model: 'google/gemini-2.0-flash-exp:free', baseUrl: 'https://openrouter.ai/api/v1', note: 'Now paste a key from openrouter.ai — any vision model tagged :free works.' },
+    groq: { provider: 'openai', model: 'meta-llama/llama-4-scout-17b-16e-instruct', baseUrl: 'https://api.groq.com/openai/v1', note: 'Now paste a free key from console.groq.com and hit Test.' },
+  };
+  VIEW.querySelectorAll('[data-ai-preset]').forEach(b => b.addEventListener('click', () => {
+    const preset = AI_PRESETS[b.dataset.aiPreset];
+    const typedKey = document.getElementById('ai-key').value.trim(); // keep anything already pasted
+    s.provider = preset.provider;
+    s.model = preset.model;
+    s.baseUrl = preset.baseUrl;
+    if (typedKey) s.apiKey = typedKey;
+    saveState();
+    renderSettings();
+    document.getElementById('ai-status').textContent = preset.note;
+  }));
   document.getElementById('ai-save').addEventListener('click', () => { saveAI(); toast('AI settings saved'); });
   document.getElementById('ai-test').addEventListener('click', async () => {
     saveAI();

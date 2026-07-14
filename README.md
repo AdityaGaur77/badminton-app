@@ -31,10 +31,12 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 
 ### Setup
 - Works fully without an API key (all team management + local analytics).
-- For AI features, add a key in Settings and pick a provider:
-  - **Anthropic (Claude)** — key from console.anthropic.com
-  - **Google (Gemini)** — key from aistudio.google.com (free tier available)
-  - **OpenAI-compatible** — any endpoint speaking the `chat/completions` format that allows browser requests (OpenRouter, Groq, Together, a local server). Set the base URL in Settings.
+- For AI features, add a key in Settings — the **Free setups** buttons prefill everything except the key:
+  - **Google Gemini** (recommended free option) — key from aistudio.google.com, no card needed; vision-capable out of the box.
+  - **OpenRouter** — key from openrouter.ai; pick any vision model tagged `:free`.
+  - **Groq** — key from console.groq.com; fast free tier with Llama vision models.
+  - Paid/other: **Anthropic Claude** (console.anthropic.com) or any OpenAI-compatible endpoint via a custom base URL.
+- **Three themes** in Settings → Appearance (or the moon button in the header): **Midnight** (dark, volt accent — default), **Court** (varsity green), **Clean** (minimal light). The choice is saved on the device.
 - Settings also has JSON export/import for backups, a sample-data loader to explore the app, and a storage meter.
 - **Works offline & installs like an app** — once opened over http(s), a service worker caches the app (gym wifi won't take it down), and on a phone you can "Add to Home Screen" for a standalone app experience.
 
