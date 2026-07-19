@@ -4,11 +4,11 @@ An AI-powered badminton tool for players **and** coaches: analyze gameplay foota
 
 ---
 
-## v6 (current) — Team Edition, clean UI
+## v6 (current) — Team Edition
 
 A single-page webapp. Open `index.html` in a browser (or serve the folder with any static server, e.g. `npx http-server`). Everything is saved locally in the browser; no backend.
 
-**What changed from v5:** the cinematic dark theme was replaced with a simple, light design (system fonts, one accent color, no ceremony); the AI layer now supports **multiple providers** (Anthropic Claude, Google Gemini, or any OpenAI-compatible endpoint); recorded videos can be **saved to a clip library** (IndexedDB) per player; and there's a browsable **drill library** plus a **pro study list** on the Compare page.
+**What changed from v5:** three switchable themes (Midnight dark with a volt accent — the default — plus Court varsity green and Clean light) with a mobile bottom tab bar and an installable, offline-capable PWA shell; the AI layer supports **multiple providers** (Anthropic Claude, Google Gemini, or any OpenAI-compatible endpoint) with one-click free-tier presets; recorded videos can be **saved to a clip library** (IndexedDB) per player; and there's a browsable **drill library** plus a **pro study list** on the Compare page.
 
 ### Structure & access
 - **Landing page** — two doors: **Enter as player** or **Coach login**.
