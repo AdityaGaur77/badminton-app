@@ -813,6 +813,45 @@ details > :last-child { margin-bottom: 14px; }
 
 hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 
+/* ================= live scorer ================= */
+
+.scorer { max-width: 760px; margin: 0 auto; }
+.scorer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+
+.scorer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+
+.score-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: min(46vh, 320px);
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  font-family: inherit;
+  padding: 16px;
+  transition: transform var(--speed), border-color var(--speed);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.score-panel:active { transform: scale(0.985); }
+.score-us { border-color: var(--accent); }
+.score-name { font-size: 14px; font-weight: 700; color: var(--ink-2); text-align: center; }
+.score-num {
+  font-size: clamp(64px, 18vw, 128px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.score-us .score-num { color: var(--link); }
+.score-hint { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--faint); font-weight: 700; }
+
 /* ================= landing ================= */
 
 .landing { max-width: 1040px; margin: 5vh auto 0; }
@@ -917,9 +956,30 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 
 @media print {
   #topnav, #tabbar, .no-print, #toast { display: none !important; }
+  /* print is always on white paper, whatever the screen theme is */
+  :root {
+    --card: #fff; --card-2: #fff; --bg: #fff;
+    --ink: #111; --ink-2: #333; --muted: #555; --faint: #777;
+    --line: #ddd; --line-2: #bbb;
+    --accent-soft: #f0f0f0; --link: #111;
+  }
   body { background: #fff; color: #111; }
-  .card { box-shadow: none; break-inside: avoid; }
+  .card { box-shadow: none; break-inside: avoid; border-color: #ddd; }
   #view { padding: 0; max-width: none; }
+  details { border-color: #ddd; }
+  details summary { color: #111; }
+  /* charts are drawn with the screen theme's colors baked in — re-ink for paper
+     (CSS wins over SVG presentation attributes) */
+  .c-grid { stroke: #d4d4d4 !important; }
+  .c-line { stroke: #222 !important; }
+  .c-area { stroke: #222 !important; fill: rgba(0, 0, 0, 0.08) !important; }
+  .c-mark { fill: #222 !important; stroke: #fff !important; }
+  .c-label { fill: #444 !important; }
+  .bar-track { border: 1px solid #ccc; }
+  .bar-fill { background: #444 !important; }
+  .scoreboard { background: #fff !important; border: 1px solid #bbb; }
+  .sb-num, .sb-num.gold { color: #111 !important; }
+  .sb-label { color: #555 !important; }
   body.print-one #view > *:not(#roster-list) { display: none !important; }
   body.print-one #roster-list .card:not(.print-target) { display: none !important; }
 }

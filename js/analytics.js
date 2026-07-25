@@ -135,9 +135,10 @@ function tryoutComposite(p) {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-/* Greedy roster fill: singles slots by singles score, doubles pairs by front/back fit + chemistry. */
+/* Greedy roster fill: singles slots by singles score, doubles pairs by front/back fit + chemistry.
+   Injured/away players are never suggested — a lineup you can't field is worse than none. */
 function suggestRoster(slots) {
-  const rosterPlayers = state.players.filter(p => p.status === 'roster');
+  const rosterPlayers = state.players.filter(p => p.status === 'roster' && isAvailable(p));
   const scored = rosterPlayers.map(p => ({
     id: p.id,
     pos: positionScores(p.id) || { singles: 0, front: 0, back: 0 },
@@ -230,6 +231,59 @@ function headToHead() {
 /* Rolling team win-rate trend (chronological), for a sparkline. */
 function teamTrend() {
   return [...state.matches].sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+/* Skill movement: average AI session scores from the first half of a player's
+   sessions vs the most recent, so "is this working?" has an answer. */
+function skillProgress(playerId) {
+  const sessions = playerSessions(playerId).filter(s => s.scores).reverse(); // oldest -> newest
+  if (sessions.length < 2) return null;
+  const mid = Math.max(1, Math.floor(sessions.length / 2));
+  const early = sessions.slice(0, mid);
+  const late = sessions.slice(-mid);
+  const avg = (arr, skill) => {
+    const vals = arr.map(s => s.scores[skill]).filter(v => v != null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  const rows = SKILLS.map(s => {
+    const a = avg(early, s), b = avg(late, s);
+    return a == null || b == null ? null : { skill: s, label: SKILL_LABELS[s], from: Math.round(a), to: Math.round(b), delta: Math.round(b - a) };
+  }).filter(Boolean);
+  if (!rows.length) return null;
+  return { rows: rows.sort((a, b) => b.delta - a.delta), sessions: sessions.length };
+}
+
+/* Session-average score over time — the "am I improving overall" line. */
+function sessionTrend(playerId) {
+  return playerSessions(playerId)
+    .filter(s => s.scores)
+    .reverse()
+    .map(s => {
+      const vals = SKILLS.map(k => s.scores[k]).filter(v => v != null);
+      return { date: s.date, label: s.label, value: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null };
+    })
+    .filter(p => p.value != null);
+}
+
+/* Record between two teammates, from matches they played against each other
+   (ladder challenges and any singles match logged with the other as opponent). */
+function teammateRecord(aId, bId) {
+  const aName = playerName(aId), bName = playerName(bId);
+  let aWins = 0, bWins = 0;
+  // A ladder challenge is stored twice — once from each player's side — so the
+  // same encounter must only be counted once. Key on date+score to collapse them.
+  const seen = new Set();
+  for (const m of state.matches) {
+    const fromA = m.playerId === aId && m.opponent === bName;
+    const fromB = m.playerId === bId && m.opponent === aName;
+    if (!fromA && !fromB) continue;
+    const key = `${m.date}|${m.score}|${m.discipline}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const aWon = fromA ? m.result === 'W' : m.result === 'L';
+    if (aWon) aWins++; else bWins++;
+  }
+  return { aWins, bWins, total: aWins + bWins };
 }
 
 /* Plain-language coach read on a player, no API needed. */

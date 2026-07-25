@@ -21,9 +21,14 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 - **Drills** — 18 standard drills (3 per skill, Beginner→Advanced) with concrete descriptions and measurable targets. Linked players see drills recommended from their current weaknesses.
 
 ### For coaches
-- **Dashboard** — Team pulse: streak/slump alerts, in-form players with sparklines, latest matches, headline stats.
+- **Live scoring** — Score a match courtside by tapping two giant numbers. Full rally scoring: first to 21, win by 2, hard cap at 30, best of three, undo-a-point, and it survives an accidental refresh. When the match ends it saves straight to the log with the game scores filled in.
+- **Challenge ladder** — The team's internal pecking order. Record a challenge; if the lower-ranked player wins they take that spot and everyone in between shifts down. Both players get the match on their record automatically. Manual ↑/↓ overrides and a printable ladder for the gym wall.
+- **Availability** — Mark players injured or away. Auto-suggest never picks them, and the roster warns you if one is placed anyway.
+- **Head to head** — Compare any two players: overlaid skill radars, win rates, form, position fit, ladder rank, and their record against each other.
+- **Dashboard** — Team pulse: streak/slump alerts, in-form players with sparklines, latest matches, headline stats, and a backup reminder when your data is at risk.
 - **Insights** — Season trajectory, **depth chart** (best-fit players per role), **practice plan** (weakest team skills with drills and focus players, printable), **head-to-head** records per opponent, and **doubles chemistry** (win rates of pairs who've played together).
-- **Players** — Profiles with skill radar, form trend, position fit (singles / doubles front / doubles back), strengths, weakest skills with drills, saved clips, match history, analysis sessions, and an optional AI-written coach note.
+- **Players** — Profiles with skill radar, form trend, position fit (singles / doubles front / doubles back), strengths, weakest skills with drills, a **progress chart** across AI sessions with per-skill deltas, saved clips, match history, private coach notes, an optional AI-written coach note, and a one-click printable report.
+- **AI match brief** — On any roster, generate a tactical brief for that opponent built from your real head-to-head history and the players you've picked.
 - **Matches** — Log every match per player: discipline, partner, opponent, score, win/loss, quick 1–5 skill ratings. Tryout players' matches are tagged automatically.
 - **Tryouts** — Add prospects and tap 1–5 scores across seven drills as they play; the board re-ranks live. Record each prospect on video, log their tryout matches, then promote keepers to the roster or cut.
 - **Rosters** — Build lineups (3 singles, 2 doubles, mixed by default — add or remove slots to match your league) with one-click **auto-suggest** from position fit, win rate, and pair chemistry. Warns when a player exceeds 2 events. Copy as text or print a single lineup.
@@ -37,6 +42,8 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
   - **Groq** — key from console.groq.com; fast free tier with Llama vision models.
   - Paid/other: **Anthropic Claude** (console.anthropic.com) or any OpenAI-compatible endpoint via a custom base URL.
 - **Three themes** in Settings → Appearance (or the moon button in the header): **Midnight** (dark, volt accent — default), **Court** (varsity green), **Clean** (minimal light). The choice is saved on the device.
+- **In-app guide** — a Guide page for coaches and players covering the first ten minutes, filming tips, and setup.
+- **Don't lose the season** — the coach passcode comes with a one-time **recovery code** (a forgotten passcode no longer means wiping the team), and the dashboard nudges you to export a backup when one is overdue.
 - Settings also has JSON export/import for backups, a sample-data loader to explore the app, and a storage meter.
 - **Works offline & installs like an app** — once opened over http(s), a service worker caches the app (gym wifi won't take it down), and on a phone you can "Add to Home Screen" for a standalone app experience.
 

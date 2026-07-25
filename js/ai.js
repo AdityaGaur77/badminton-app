@@ -293,6 +293,44 @@ Write a short coaching note (120-180 words, plain prose, no headings or bullets)
   return callAI([{ text: prompt }], 600);
 }
 
+/* Pre-match tactical brief for the coach, from real history against this opponent. */
+async function aiMatchBrief(opponent, lineup) {
+  const past = state.matches.filter(m => (m.opponent || '').toLowerCase() === opponent.toLowerCase());
+  const wins = past.filter(m => m.result === 'W').length;
+  const summary = {
+    opponent,
+    ourRecordVsThem: `${wins}-${past.length - wins}`,
+    pastMeetings: past.slice(0, 12).map(m => ({
+      date: m.date, discipline: m.discipline, result: m.result, score: m.score,
+      player: playerName(m.playerId), partner: m.partnerId ? playerName(m.partnerId) : null, notes: m.notes || undefined,
+    })),
+    plannedLineup: lineup.map(l => ({
+      slot: l.slot,
+      players: l.players.map(id => ({
+        name: playerName(id),
+        skills: skillProfile(id),
+        recentForm: recentForm(id),
+        bestPosition: positionScores(id)?.best,
+      })),
+    })),
+  };
+  const prompt = `You are a varsity badminton coach preparing your team for a match. Here is the data as JSON:
+${JSON.stringify(summary, null, 1)}
+
+Write a tactical brief for the coaching staff. Return ONLY a JSON object, no markdown fences:
+{
+  "headline": "one sentence on how this matchup looks",
+  "keyPoints": ["3-5 short tactical points grounded in the data above"],
+  "perSlot": [{"slot": "slot code", "advice": "one or two sentences of specific guidance for the players in that slot"}],
+  "watchOut": "the single biggest risk in this match"
+}
+Base everything on the data provided — if history is thin, say so rather than inventing detail.`;
+  const text = await callAI([{ text: prompt }], 1200);
+  const parsed = parseJsonReply(text);
+  if (!parsed.headline || !parsed.keyPoints) throw new Error('AI reply missing expected fields.');
+  return parsed;
+}
+
 /* ---------- demo analysis (no key) ----------
    Lets anyone see what the feedback UI looks like. Clearly labeled and never
    saved to a player's profile, so fake numbers can't pollute real stats. */

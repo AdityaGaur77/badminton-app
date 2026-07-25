@@ -53,11 +53,16 @@ const ROUTES = {
   analyze: renderAnalyze,
   compare: renderCompare,
   drills: renderDrills,
+  guide: renderGuide,
+  recovery: renderRecovery,
+  score: renderScore,
+  ladder: renderLadder,
+  vs: renderVersus,
   settings: renderSettings,
 };
 
-const COACH_ONLY = new Set(['players', 'matches', 'tryouts', 'rosters', 'insights', 'settings']);
-const NEEDS_ROLE = new Set([...COACH_ONLY, 'analyze', 'compare', 'team', 'drills', 'player']);
+const COACH_ONLY = new Set(['players', 'matches', 'tryouts', 'rosters', 'insights', 'settings', 'recovery', 'score', 'vs']);
+const NEEDS_ROLE = new Set([...COACH_ONLY, 'analyze', 'compare', 'team', 'drills', 'player', 'ladder']);
 
 function parseHash() {
   const hash = location.hash.replace(/^#\/?/, '');
@@ -109,6 +114,10 @@ function navIcon(name) {
     settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
     more: '<circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>',
     theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18c-2.5-2-4-5.4-4-9s1.5-7 4-9z" fill="currentColor" stroke="none"/>',
+    guide: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.8-.9 1.4v.5"/><circle cx="12" cy="16.8" r="0.9" fill="currentColor" stroke="none"/>',
+    score: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14M7 10.5h1.5M6.25 9.25v2.5M15.5 10.5H17"/>',
+    ladder: '<path d="M7 3v18M17 3v18M7 7h10M7 12h10M7 17h10"/>',
+    vs: '<path d="M4 6l3 6-3 6M20 6l-3 6 3 6"/><path d="M12 4v16"/>',
   };
   return `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 }
@@ -121,25 +130,33 @@ function buildNav() {
   let links = '', right = '', tabs = '';
   if (role === 'coach') {
     links = [
-      link('home', 'Dashboard'), link('insights', 'Insights'), link('players', 'Players'),
-      link('matches', 'Matches'), link('tryouts', 'Tryouts'), link('rosters', 'Rosters'),
-      link('analyze', 'Analyze'), link('compare', 'Compare'), link('settings', 'Settings'),
+      link('home', 'Dashboard'), link('score', 'Score'), link('players', 'Players'),
+      link('matches', 'Matches'), link('ladder', 'Ladder'), link('tryouts', 'Tryouts'),
+      link('rosters', 'Rosters'), link('insights', 'Insights'), link('vs', 'Head to head'),
+      link('analyze', 'Analyze'), link('compare', 'Compare'), link('guide', 'Guide'), link('settings', 'Settings'),
     ].join('');
     right = `<button class="nav-role" data-logout>Log out</button>`;
-    tabs = tab('home', 'Home', 'home') + tab('players', 'Players', 'players')
-      + tab('matches', 'Matches', 'matches') + tab('tryouts', 'Tryouts', 'tryouts')
+    tabs = tab('home', 'Home', 'home') + tab('score', 'Score', 'score')
+      + tab('players', 'Players', 'players') + tab('matches', 'Matches', 'matches')
       + `<button class="tab" id="tab-more" aria-expanded="false">${navIcon('more')}<span>More</span></button>`
       + `<div class="more-sheet" id="more-sheet" hidden>`
+      + sheetRow('ladder', 'Ladder', 'ladder') + sheetRow('tryouts', 'Tryouts', 'tryouts')
       + sheetRow('rosters', 'Rosters', 'rosters') + sheetRow('insights', 'Insights', 'insights')
-      + sheetRow('analyze', 'Analyze', 'analyze') + sheetRow('compare', 'Compare', 'compare')
+      + sheetRow('vs', 'Head to head', 'vs') + sheetRow('analyze', 'Analyze', 'analyze')
+      + sheetRow('compare', 'Compare', 'compare') + sheetRow('guide', 'Guide', 'guide')
       + sheetRow('settings', 'Settings', 'settings')
       + `</div>`;
   } else if (role === 'student') {
-    links = [link('home', 'Home'), link('team', 'Team'), link('analyze', 'Analyze'), link('compare', 'Compare'), link('drills', 'Drills')].join('');
+    links = [link('home', 'Home'), link('team', 'Team'), link('ladder', 'Ladder'), link('analyze', 'Analyze'), link('compare', 'Compare'), link('drills', 'Drills'), link('guide', 'Guide')].join('');
     const me = currentStudent();
     right = `<button class="nav-role" data-logout>${me ? esc(me.name.split(' ')[0]) + ' · ' : ''}Sign out</button>`;
     tabs = tab('home', 'Home', 'home') + tab('team', 'Team', 'team') + tab('analyze', 'Analyze', 'analyze')
-      + tab('compare', 'Compare', 'compare') + tab('drills', 'Drills', 'drills');
+      + tab('drills', 'Drills', 'drills')
+      + `<button class="tab" id="tab-more" aria-expanded="false">${navIcon('more')}<span>More</span></button>`
+      + `<div class="more-sheet" id="more-sheet" hidden>`
+      + sheetRow('ladder', 'Ladder', 'ladder') + sheetRow('compare', 'Compare', 'compare')
+      + sheetRow('guide', 'Guide', 'guide')
+      + `</div>`;
   } else {
     right = `<a class="nav-role" style="text-decoration:none" href="#/login">Log in</a>`;
   }
@@ -304,7 +321,7 @@ function renderLanding() {
           <a class="btn btn-primary btn-lg" href="#/login">Enter as player</a>
           <a class="btn btn-lg" href="#/coach">Coach login</a>
         </div>
-        <p class="hero-trust"><b>Free</b> · no accounts · your data stays on this device</p>
+        <p class="hero-trust"><b>Free</b> · no accounts · your data stays on this device · <a href="#/guide">How it works</a></p>
       </div>
       <div class="hero-art">${courtArt}</div>
     </div>
@@ -345,35 +362,60 @@ function renderLogin() {
   });
 }
 
-function renderGate() {
+function renderGate(_, params) {
   if (isCoach()) { location.hash = '#/'; return; }
-  const firstRun = !coachPassIsSet();
+  const mode = params?.get('mode') === 'recover' && coachPassIsSet() ? 'recover'
+    : coachPassIsSet() ? 'login' : 'setup';
+
+  const forms = {
+    setup: `
+      <h2>Set up coach access</h2>
+      <p class="muted small">Create a passcode (4+ digits). It keeps players out of the coach tools on a shared device.</p>
+      <label>Passcode<input type="password" id="gate-pass" inputmode="numeric" autocomplete="new-password"></label>
+      <label style="margin-top:8px">Repeat it<input type="password" id="gate-pass2" inputmode="numeric" autocomplete="new-password"></label>`,
+    login: `
+      <h2>Coach login</h2>
+      <label>Passcode<input type="password" id="gate-pass" inputmode="numeric" autocomplete="current-password"></label>`,
+    recover: `
+      <h2>Reset your passcode</h2>
+      <p class="muted small">Enter the recovery code you saved when you set up coach access. Your team data stays intact.</p>
+      <label>Recovery code<input type="text" id="gate-recovery" placeholder="XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false"></label>
+      <label style="margin-top:8px">New passcode<input type="password" id="gate-pass" inputmode="numeric" autocomplete="new-password"></label>`,
+  };
+
   VIEW.innerHTML = `
   <div class="gate">
     <div class="card">
-      <h2>${firstRun ? 'Set up coach access' : 'Coach login'}</h2>
-      ${firstRun
-        ? `<p class="muted small">Create a passcode (4+ digits). It only protects the coach tools on this device.</p>
-           <label>Passcode<input type="password" id="gate-pass" inputmode="numeric" autocomplete="new-password"></label>
-           <label style="margin-top:8px">Repeat it<input type="password" id="gate-pass2" inputmode="numeric" autocomplete="new-password"></label>`
-        : `<label>Passcode<input type="password" id="gate-pass" inputmode="numeric" autocomplete="current-password"></label>`}
+      ${forms[mode]}
       <div id="gate-err" class="small" style="color:var(--loss); min-height:18px; margin-top:6px"></div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="gate-go">${firstRun ? 'Create & enter' : 'Enter'}</button>
+        <button class="btn btn-primary" id="gate-go">${mode === 'setup' ? 'Create & enter' : mode === 'recover' ? 'Reset passcode' : 'Enter'}</button>
         <a class="btn" href="#/">Back</a>
       </div>
-      ${firstRun ? '' : `<p class="muted small">Forgot it? Clear this site's browser data to start over (this erases team data too).</p>`}
+      ${mode === 'login' ? (recoveryIsSet()
+          ? `<p class="small"><a href="#/coach?mode=recover">Forgot your passcode?</a></p>`
+          : `<p class="muted small">Forgot it? Without a recovery code, the only way in is clearing this site's browser data — which erases the team too.</p>`)
+        : ''}
+      ${mode === 'recover' ? `<p class="small"><a href="#/coach">Back to passcode login</a></p>` : ''}
     </div>
   </div>`;
+
   const err = document.getElementById('gate-err');
   const go = () => {
     const code = document.getElementById('gate-pass').value.trim();
-    if (firstRun) {
+    if (mode === 'setup') {
       const code2 = document.getElementById('gate-pass2').value.trim();
       if (code.length < 4) { err.textContent = 'Use at least 4 digits.'; return; }
       if (code !== code2) { err.textContent = 'Passcodes don\'t match.'; return; }
       setCoachPass(code);
       setRole('coach');
+      issueRecoveryCode();
+    } else if (mode === 'recover') {
+      if (!checkRecoveryCode(document.getElementById('gate-recovery').value)) { err.textContent = 'That recovery code doesn\'t match.'; return; }
+      if (code.length < 4) { err.textContent = 'New passcode needs at least 4 digits.'; return; }
+      setCoachPass(code);
+      setRole('coach');
+      toast('Passcode reset — your team data is untouched');
       location.hash = '#/';
     } else if (checkCoachPass(code)) {
       setRole('coach');
@@ -384,7 +426,45 @@ function renderGate() {
   };
   document.getElementById('gate-go').addEventListener('click', go);
   VIEW.querySelectorAll('input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }));
-  document.getElementById('gate-pass').focus();
+  VIEW.querySelector('input')?.focus();
+}
+
+/* The plaintext code exists only until the coach confirms they've saved it.
+   Held in a variable + shown via its own route so a stray re-render can't
+   destroy it before it's written down. */
+let pendingRecoveryCode = null;
+
+function issueRecoveryCode() {
+  pendingRecoveryCode = makeRecoveryCode();
+  setRecoveryCode(pendingRecoveryCode);
+  location.hash = '#/recovery';
+  route();
+}
+
+function renderRecovery() {
+  if (!pendingRecoveryCode) { location.hash = '#/settings'; return; }
+  const code = pendingRecoveryCode;
+  VIEW.innerHTML = `
+  <div class="gate">
+    <div class="card">
+      <h2>Save your recovery code</h2>
+      <p class="muted small">This is the only way back in if you forget your passcode. Write it down or photograph it — it won't be shown again.</p>
+      <p style="font-size:clamp(20px,5vw,27px);font-weight:800;letter-spacing:0.1em;text-align:center;padding:16px;background:var(--accent-soft);color:var(--link);border-radius:10px;font-variant-numeric:tabular-nums;user-select:all;word-break:break-word">${esc(code)}</p>
+      <div class="btn-row">
+        <button class="btn" id="rec-copy">Copy code</button>
+        <button class="btn btn-primary" id="rec-done">I've saved it — continue</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('rec-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(code); toast('Recovery code copied'); }
+    catch { prompt('Copy your recovery code:', code); }
+  });
+  document.getElementById('rec-done').addEventListener('click', () => {
+    pendingRecoveryCode = null;
+    location.hash = '#/';
+    route();
+  });
 }
 
 /* ---------- coach dashboard ---------- */
@@ -443,6 +523,15 @@ function renderDashboard() {
     <div class="sb-item"><div class="sb-num">${tryouts.length}</div><div class="sb-label">${tryouts.length ? '<a href="#/tryouts">Prospects</a>' : 'Prospects'}</div></div>
   </div>
 
+  ${backupIsStale() && sessionGet('siq_backup_dismissed') !== '1' ? `
+    <div class="notice section" id="backup-nudge" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span style="flex:1;min-width:220px">${daysSinceBackup() === null
+        ? '<b>Back up your season.</b> Browsers can clear local data — a backup file is the only copy that survives.'
+        : `<b>Last backup was ${daysSinceBackup()} days ago.</b> Keep a fresh copy so a cleared browser can't wipe the season.`}</span>
+      <button class="btn btn-sm btn-primary" id="nudge-backup">Export backup</button>
+      <button class="btn btn-sm" id="nudge-dismiss">Not now</button>
+    </div>` : ''}
+
   <div class="dash-grid section">
     <div class="dash-main">
       ${alerts.length ? `<div class="card"><div class="card-title">Needs attention</div>${alerts.map(a => `<p style="margin:4px 0">${a}</p>`).join('')}</div>` : ''}
@@ -492,6 +581,16 @@ function renderDashboard() {
       </div>` : ''}
     </aside>
   </div>`;
+
+  document.getElementById('nudge-backup')?.addEventListener('click', () => {
+    exportData();
+    toast('Backup saved — keep it somewhere safe');
+    route();
+  });
+  document.getElementById('nudge-dismiss')?.addEventListener('click', () => {
+    sessionSet('siq_backup_dismissed', '1');
+    document.getElementById('backup-nudge')?.remove();
+  });
 }
 
 /* ---------- student dashboard ---------- */
@@ -687,24 +786,30 @@ function renderPlayers(_, params) {
   <div class="filter-row">
     ${['all', 'roster', 'tryout', 'cut'].map(f =>
       `<button class="filter-chip ${f === filter ? 'active' : ''}" data-f="${f}">${f[0].toUpperCase() + f.slice(1)} (${counts[f]})</button>`).join('')}
+    <input type="text" id="pl-search" placeholder="Search name…" style="max-width:200px;margin-left:auto" autocomplete="off">
   </div>
 
   ${list.length ? `<div class="card"><div class="table-wrap"><table>
-    <thead><tr><th>Player</th><th>Year</th><th>Hand</th><th>Status</th><th>Record</th><th>Trend</th><th>Best fit</th></tr></thead>
+    <thead><tr><th>Player</th><th>Year</th><th>Hand</th><th>Status</th><th>Available</th><th>Record</th><th>Trend</th><th>Best fit</th></tr></thead>
     <tbody>${list.map(p => {
       const ms = playerMatches(p.id);
       const w = ms.filter(m => m.result === 'W').length;
       const pos = positionScores(p.id);
-      return `<tr>
+      const av = playerAvailability(p);
+      return `<tr data-name="${esc(p.name.toLowerCase())}">
         <td>${playerLink(p.id)}</td>
         <td class="muted">${esc(p.year ?? '')}</td>
         <td class="muted">${esc(p.hand ?? '')}</td>
         <td><span class="chip chip-neutral">${esc(p.status)}</span></td>
+        <td><select class="avail-pick" data-id="${p.id}" style="width:auto;padding:3px 6px;font-size:12px">
+          ${Object.entries(AVAILABILITY).map(([k, v]) => `<option value="${k}" ${av === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+        </select></td>
         <td>${ms.length ? `${w}–${ms.length - w}` : '<span class="muted">—</span>'}</td>
         <td>${trendArrow(recentForm(p.id))}</td>
         <td class="small">${pos ? POSITIONS[pos.best].label : '<span class="muted">—</span>'}</td>
       </tr>`;
-    }).join('')}</tbody></table></div></div>`
+    }).join('')}</tbody></table></div>
+    <p class="small muted" id="pl-empty" style="display:none">No players match that search.</p></div>`
   : `<div class="empty"><h3>No players ${filter === 'all' ? 'yet' : 'in this group'}</h3><p>Add players above${filter === 'all' ? ' or load sample data from Settings' : ''}.</p></div>`}`;
 
   document.getElementById('np-add').addEventListener('click', () => {
@@ -729,6 +834,27 @@ function renderPlayers(_, params) {
   VIEW.querySelectorAll('.filter-chip').forEach(b => b.addEventListener('click', () => {
     location.hash = `#/players?f=${b.dataset.f}`;
   }));
+
+  VIEW.querySelectorAll('.avail-pick').forEach(sel => sel.addEventListener('change', () => {
+    const p = getPlayer(sel.dataset.id);
+    if (!p) return;
+    p.availability = sel.value;
+    saveState();
+    toast(`${p.name}: ${AVAILABILITY[sel.value].label}`);
+  }));
+
+  const search = document.getElementById('pl-search');
+  search?.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    VIEW.querySelectorAll('tbody tr[data-name]').forEach(row => {
+      const hit = !q || row.dataset.name.includes(q);
+      row.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    const empty = document.getElementById('pl-empty');
+    if (empty) empty.style.display = shown ? 'none' : '';
+  });
 }
 
 /* ---------- player detail ---------- */
@@ -749,10 +875,11 @@ function renderPlayerDetail(id) {
   VIEW.innerHTML = `
   ${coach ? '<p class="small no-print"><a href="#/players">← Players</a></p>' : ''}
   <div class="page-head">
-    <h1>${esc(p.name)} <span class="chip chip-neutral">${esc(p.status)}</span></h1>
+    <h1>${esc(p.name)} <span class="chip chip-neutral">${esc(p.status)}</span>${playerAvailability(p) !== 'available' ? ` <span class="chip ${AVAILABILITY[playerAvailability(p)].chip}">${AVAILABILITY[playerAvailability(p)].label}</span>` : ''}${ladderRank(id) ? ` <span class="chip chip-neutral">Ladder #${ladderRank(id)}</span>` : ''}</h1>
     <div class="btn-row no-print" style="margin:0">
       ${coach ? `<a class="btn btn-sm" href="#/matches?player=${id}">Log match</a>` : ''}
       <a class="btn btn-sm" href="#/analyze?player=${id}">Analyze video</a>
+      <button class="btn btn-sm" id="pd-print">Print report</button>
       ${coach ? `<button class="btn btn-sm" id="pd-edit-toggle">Edit</button>` : ''}
     </div>
   </div>
@@ -764,6 +891,7 @@ function renderPlayerDetail(id) {
       <label>Year<select id="pe-year">${[9, 10, 11, 12].map(y => `<option ${p.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
       <label>Hand<select id="pe-hand">${['Right', 'Left'].map(h => `<option ${p.hand === h ? 'selected' : ''}>${h}</option>`).join('')}</select></label>
       <label>Status<select id="pe-status">${['roster', 'tryout', 'cut'].map(s => `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+      <label>Availability<select id="pe-avail">${Object.entries(AVAILABILITY).map(([k, v]) => `<option value="${k}" ${playerAvailability(p) === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
     </div>
     <label style="margin-top:8px">Coach notes (only shown in coach view)<textarea id="pe-notes" placeholder="Anything worth remembering about this player">${esc(p.notes || '')}</textarea></label>
     <div class="btn-row">
@@ -819,7 +947,22 @@ function renderPlayerDetail(id) {
     </div>` : ''}
   </div>
 
-  <div class="card">
+  ${(() => {
+    const trend = sessionTrend(id);
+    const prog = skillProgress(id);
+    if (trend.length < 2 && !prog) return '';
+    return `<div class="card">
+      <div class="card-title">Progress</div>
+      ${trend.length >= 2 ? `${lineChartSVG(trend)}<p class="small muted">Average AI session score across ${trend.length} analyses</p>` : ''}
+      ${prog ? `<div class="grid3" style="margin-top:10px">${prog.rows.map(r => `
+        <div class="small"><b>${r.label}</b><br>
+          <span class="muted">${r.from} → ${r.to}</span>
+          <span class="${r.delta > 0 ? 'trend-up' : r.delta < 0 ? 'trend-down' : 'trend-flat'}">${r.delta > 0 ? '+' : ''}${r.delta}</span>
+        </div>`).join('')}</div>` : ''}
+    </div>`;
+  })()}
+
+  <div class="card no-print">
     <div class="card-title">Saved clips</div>
     <div id="pd-clips"><p class="muted small">Loading…</p></div>
   </div>
@@ -852,6 +995,8 @@ function renderPlayerDetail(id) {
       : '<p class="muted">No analyses yet.</p>'}
     </div>
   </div>`;
+
+  document.getElementById('pd-print').addEventListener('click', () => window.print());
 
   // clips
   listClips().then(clips => {
@@ -896,6 +1041,7 @@ function renderPlayerDetail(id) {
     p.year = Number(document.getElementById('pe-year').value);
     p.hand = document.getElementById('pe-hand').value;
     p.status = document.getElementById('pe-status').value;
+    p.availability = document.getElementById('pe-avail').value;
     p.notes = document.getElementById('pe-notes').value.trim();
     saveState();
     toast('Saved');
@@ -1197,12 +1343,16 @@ function rosterWarnings(r) {
     if (slot.type === 'doubles' && ids.length === 2 && ids[0] === ids[1]) {
       warns.push(`${slot.label}: same player twice.`);
     }
+    for (const id of ids) {
+      const p = getPlayer(id);
+      if (p && !isAvailable(p)) warns.push(`${p.name} is marked ${AVAILABILITY[playerAvailability(p)].label.toLowerCase()} but is in ${slot.label}.`);
+    }
     ids.forEach(id => { seen[id] = (seen[id] || 0) + 1; });
   }
   for (const [id, n] of Object.entries(seen)) {
     if (n > 2) warns.push(`${playerName(id)} is in ${n} events — most leagues cap at 2.`);
   }
-  return warns;
+  return [...new Set(warns)];
 }
 
 function renderRosters() {
@@ -1248,6 +1398,7 @@ function renderRosterCard(r) {
       <h3 style="margin:0">${esc(r.name)} <span class="muted small">· ${fmtDate(r.date)}</span></h3>
       <div class="btn-row no-print" style="margin:0">
         <button class="btn btn-sm" data-act="auto">Auto-suggest</button>
+        <button class="btn btn-sm" data-act="brief" ${hasApiKey() ? '' : 'disabled title="Add an API key in Settings"'}>AI match brief</button>
         <button class="btn btn-sm" data-act="copy">Copy as text</button>
         <button class="btn btn-sm" data-act="print">Print</button>
         <button class="btn btn-danger btn-sm" data-act="del">Delete</button>
@@ -1270,6 +1421,7 @@ function renderRosterCard(r) {
       <button class="btn btn-sm" data-act="add-doubles">+ Doubles slot</button>
     </div>
     <div class="small" style="color:var(--loss)" data-warnings>${rosterWarnings(r).map(esc).join('<br>')}</div>
+    <div data-brief></div>
   </div>`;
 }
 
@@ -1302,11 +1454,41 @@ function wireRosterCard(r) {
   }));
   card.querySelector('[data-act="auto"]').addEventListener('click', () => {
     const suggestion = suggestRoster(r.slots);
-    r.slots.forEach(slot => { if (suggestion[slot.code]) slot.playerIds = suggestion[slot.code]; });
+    // rebuild from scratch — leaving stale picks in unfillable slots is how an
+    // injured player ends up still listed in the lineup
+    r.slots.forEach(slot => { slot.playerIds = suggestion[slot.code] || []; });
     saveState();
-    toast('Lineup suggested from position fit, form, and pair chemistry');
+    const unfilled = r.slots.filter(s => !s.playerIds.length).length;
+    const sidelined = state.players.filter(p => p.status === 'roster' && !isAvailable(p)).length;
+    toast(unfilled
+      ? `Filled ${r.slots.length - unfilled} of ${r.slots.length} slots${sidelined ? ` — ${sidelined} player${sidelined === 1 ? '' : 's'} unavailable` : ' — not enough available players'}`
+      : 'Lineup set from position fit, form, and pair chemistry');
     renderRosters();
   });
+  card.querySelector('[data-act="brief"]').addEventListener('click', async () => {
+    const btn = card.querySelector('[data-act="brief"]');
+    const box = card.querySelector('[data-brief]');
+    const opponent = (r.name.match(/vs\.?\s+(.+)/i)?.[1] || r.name).trim();
+    const lineup = r.slots.filter(s => s.playerIds.length).map(s => ({ slot: s.label, players: s.playerIds }));
+    if (!lineup.length) { box.innerHTML = '<p class="small muted">Fill in some slots first — the brief is built around who\'s playing.</p>'; return; }
+    btn.disabled = true;
+    box.innerHTML = '<p class="small muted">Writing the brief…</p>';
+    try {
+      const brief = await aiMatchBrief(opponent, lineup);
+      box.innerHTML = `
+        <hr>
+        <div class="card-title">Match brief vs ${esc(opponent)}</div>
+        <p><b>${esc(brief.headline)}</b></p>
+        <ul class="small" style="padding-left:20px">${(brief.keyPoints || []).map(k => `<li>${esc(k)}</li>`).join('')}</ul>
+        ${(brief.perSlot || []).length ? `<div class="table-wrap"><table><tbody>${brief.perSlot.map(sl => `<tr><td style="width:130px"><b>${esc(sl.slot)}</b></td><td class="small">${esc(sl.advice)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${brief.watchOut ? `<p class="small" style="color:var(--loss)"><b>Watch out:</b> ${esc(brief.watchOut)}</p>` : ''}`;
+    } catch (err) {
+      box.innerHTML = `<p class="small" style="color:var(--loss)">Brief failed: ${esc(err.message)}</p>`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   card.querySelector('[data-act="copy"]').addEventListener('click', async () => {
     const lines = [`${r.name} — ${fmtDate(r.date)}`, ...r.slots.map(s =>
       `${s.label}: ${s.playerIds.length ? s.playerIds.map(playerName).join(' / ') : '—'}`)];
@@ -1822,6 +2004,415 @@ function renderDrills(_, params) {
   }));
 }
 
+/* ---------- live scorer ----------
+   Rally scoring: first to 21, win by 2, hard cap at 30. Best of three.
+   Kept in sessionStorage so a dropped phone or accidental refresh mid-match
+   doesn't lose the score. */
+
+const SCORER_KEY = 'siq_live_match';
+
+function loadScorer() {
+  try { return JSON.parse(sessionGet(SCORER_KEY) || 'null'); } catch { return null; }
+}
+
+function saveScorer(s) {
+  if (s) sessionSet(SCORER_KEY, JSON.stringify(s));
+  else sessionRemove(SCORER_KEY);
+}
+
+function gameWinner(a, b) {
+  if (a >= 30 && a > b) return 'us';
+  if (b >= 30 && b > a) return 'them';
+  if (a >= 21 && a - b >= 2) return 'us';
+  if (b >= 21 && b - a >= 2) return 'them';
+  return null;
+}
+
+function scorerStanding(s) {
+  const usGames = s.games.filter(g => gameWinner(g[0], g[1]) === 'us').length;
+  const themGames = s.games.filter(g => gameWinner(g[0], g[1]) === 'them').length;
+  return { usGames, themGames, matchOver: usGames === 2 || themGames === 2 };
+}
+
+function renderScore(_, params) {
+  const live = loadScorer();
+  if (live) return renderScorerBoard(live);
+
+  const preselect = params?.get('player') || null;
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Live scoring</h1><p class="muted">Tap to score — it saves the match when you're done</p></div>
+  <div class="card" style="max-width:560px">
+    <div class="form-grid">
+      <label>Player<select id="sc-player">${playerOptions(preselect, { statuses: ['roster', 'tryout'] })}</select></label>
+      <label>Discipline<select id="sc-disc">${DISCIPLINES.map(d => `<option>${d}</option>`).join('')}</select></label>
+      <label id="sc-partner-wrap" style="display:none">Partner<select id="sc-partner"><option value="">—</option>${playerOptions(null, { statuses: ['roster', 'tryout'] })}</select></label>
+      <label>Opponent<input type="text" id="sc-opp" placeholder="School or player"></label>
+    </div>
+    <div class="btn-row"><button class="btn btn-primary btn-lg" id="sc-start">Start match</button></div>
+    <p class="small muted">Rally scoring to 21, win by 2, capped at 30. Best of three games.</p>
+  </div>`;
+
+  if (!state.players.length) {
+    VIEW.innerHTML = '<div class="empty"><h3>Add a player first</h3><p>Live scoring attaches the result to a player on your roster.</p><div class="btn-row center"><a class="btn btn-primary" href="#/players">Add players</a></div></div>';
+    return;
+  }
+
+  const disc = document.getElementById('sc-disc');
+  const wrap = document.getElementById('sc-partner-wrap');
+  const sync = () => { wrap.style.display = DOUBLES.has(disc.value) ? '' : 'none'; };
+  disc.addEventListener('change', sync); sync();
+
+  document.getElementById('sc-start').addEventListener('click', () => {
+    const playerId = document.getElementById('sc-player').value;
+    if (!playerId) { toast('Pick a player first'); return; }
+    let partnerId = DOUBLES.has(disc.value) ? (document.getElementById('sc-partner').value || null) : null;
+    if (partnerId === playerId) partnerId = null;
+    saveScorer({
+      playerId, partnerId, discipline: disc.value,
+      opponent: document.getElementById('sc-opp').value.trim() || 'Opponent',
+      games: [], us: 0, them: 0, history: [],
+    });
+    route();
+  });
+}
+
+function renderScorerBoard(s) {
+  const usName = s.partnerId ? `${playerName(s.playerId).split(' ')[0]} / ${playerName(s.partnerId).split(' ')[0]}` : playerName(s.playerId);
+  const { usGames, themGames, matchOver } = scorerStanding(s);
+  const winner = gameWinner(s.us, s.them);
+  const gameNo = s.games.length + 1;
+
+  VIEW.innerHTML = `
+  <div class="scorer">
+    <div class="scorer-head">
+      <div>
+        <div class="small muted">${esc(s.discipline)} · vs ${esc(s.opponent)}</div>
+        <div style="font-weight:750">Game ${matchOver ? s.games.length : gameNo} · ${usGames}–${themGames} in games</div>
+      </div>
+      <button class="btn btn-sm" id="sc-quit">Cancel match</button>
+    </div>
+
+    ${s.games.length ? `<p class="small muted">Completed: ${s.games.map(g => `${g[0]}–${g[1]}`).join(', ')}</p>` : ''}
+
+    ${matchOver ? `
+      <div class="card center">
+        <h2 style="margin-bottom:6px">${usGames > themGames ? 'Win' : 'Loss'} — ${s.games.map(g => `${g[0]}-${g[1]}`).join(', ')}</h2>
+        <p class="muted small">Save it to the match log, with optional skill ratings.</p>
+        <details style="text-align:left;margin-top:10px"><summary>Rate their play (optional, 1–5)</summary>
+          <div id="sc-ratings">${SKILLS.map(k => ratingRow(k, SKILL_LABELS[k])).join('')}</div>
+        </details>
+        <div class="btn-row center" style="margin-top:12px">
+          <button class="btn btn-primary btn-lg" id="sc-save">Save match</button>
+          <button class="btn" id="sc-discard">Discard</button>
+        </div>
+      </div>`
+    : `
+      <div class="scorer-grid">
+        <button class="score-panel score-us" id="sc-us">
+          <span class="score-name">${esc(usName)}</span>
+          <span class="score-num">${s.us}</span>
+          <span class="score-hint">tap to score</span>
+        </button>
+        <button class="score-panel score-them" id="sc-them">
+          <span class="score-name">${esc(s.opponent)}</span>
+          <span class="score-num">${s.them}</span>
+          <span class="score-hint">tap to score</span>
+        </button>
+      </div>
+      ${winner ? `<p class="center" style="font-weight:700;color:var(--link)">Game ${gameNo} to ${winner === 'us' ? esc(usName) : esc(s.opponent)} — tap "Next game"</p>` : ''}
+      <div class="btn-row center">
+        <button class="btn" id="sc-undo" ${s.history.length ? '' : 'disabled'}>Undo point</button>
+        ${winner ? `<button class="btn btn-primary" id="sc-next">Next game</button>` : ''}
+      </div>
+      <p class="center small muted">First to 21, win by 2 · capped at 30</p>`}
+  </div>`;
+
+  const push = side => {
+    s.history.push([s.us, s.them]);
+    if (side === 'us') s.us++; else s.them++;
+    saveScorer(s);
+    renderScorerBoard(s);
+  };
+
+  document.getElementById('sc-us')?.addEventListener('click', () => { if (!gameWinner(s.us, s.them)) push('us'); });
+  document.getElementById('sc-them')?.addEventListener('click', () => { if (!gameWinner(s.us, s.them)) push('them'); });
+  document.getElementById('sc-undo')?.addEventListener('click', () => {
+    const prev = s.history.pop();
+    if (!prev) return;
+    [s.us, s.them] = prev;
+    saveScorer(s);
+    renderScorerBoard(s);
+  });
+  document.getElementById('sc-next')?.addEventListener('click', () => {
+    s.games.push([s.us, s.them]);
+    s.us = 0; s.them = 0; s.history = [];
+    saveScorer(s);
+    renderScorerBoard(s);
+  });
+  document.getElementById('sc-quit')?.addEventListener('click', () => {
+    if (!confirm('Cancel this match? The score is discarded.')) return;
+    saveScorer(null);
+    route();
+  });
+  document.getElementById('sc-discard')?.addEventListener('click', () => {
+    if (!confirm('Discard this result without saving?')) return;
+    saveScorer(null);
+    route();
+  });
+
+  const ratingsBox = document.getElementById('sc-ratings');
+  if (ratingsBox) wireRatingRows(ratingsBox);
+
+  document.getElementById('sc-save')?.addEventListener('click', () => {
+    const player = getPlayer(s.playerId);
+    state.matches.push({
+      id: uid(), playerId: s.playerId, partnerId: s.partnerId,
+      date: todayISO(), opponent: s.opponent, discipline: s.discipline,
+      result: usGames > themGames ? 'W' : 'L',
+      score: s.games.map(g => `${g[0]}-${g[1]}`).join(', '),
+      ratings: ratingsBox ? readRatings(ratingsBox) : {},
+      notes: '', context: player && player.status === 'tryout' ? 'tryout' : 'season',
+    });
+    saveState();
+    saveScorer(null);
+    toast('Match saved to the log');
+    location.hash = '#/matches';
+  });
+}
+
+/* ---------- challenge ladder ---------- */
+
+function renderLadder() {
+  const ids = ladderIds();
+  const rows = ids.map((id, i) => ({ p: getPlayer(id), rank: i + 1 })).filter(r => r.p);
+
+  VIEW.innerHTML = `
+  <div class="page-head">
+    <h1>Challenge ladder</h1>
+    <p class="muted">Beat the player above you and you take their spot</p>
+  </div>
+
+  ${rows.length >= 2 ? `
+  <div class="card">
+    <div class="card-title">Record a challenge</div>
+    <div class="form-grid">
+      <label>Challenger (lower rank)<select id="ch-challenger">${rows.map(r => `<option value="${r.p.id}">#${r.rank} ${esc(r.p.name)}</option>`).join('')}</select></label>
+      <label>Defender (higher rank)<select id="ch-defender">${rows.map(r => `<option value="${r.p.id}">#${r.rank} ${esc(r.p.name)}</option>`).join('')}</select></label>
+      <label>Score (optional)<input type="text" id="ch-score" placeholder="21-18, 21-15"></label>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="ch-challenger-won">Challenger won</button>
+      <button class="btn" id="ch-defender-won">Defender held</button>
+    </div>
+    <p class="small muted">Either way it's logged as a match for both players, so it counts toward their form.</p>
+  </div>` : ''}
+
+  ${rows.length ? `<div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Player</th><th>Status</th><th>Record</th><th>Last 8</th><th>Fit</th><th class="no-print">Move</th></tr></thead>
+    <tbody>${rows.map(r => {
+      const ms = playerMatches(r.p.id);
+      const w = ms.filter(m => m.result === 'W').length;
+      const pos = positionScores(r.p.id);
+      const av = playerAvailability(r.p);
+      return `<tr>
+        <td><span class="rank-num">${r.rank}</span></td>
+        <td>${playerLink(r.p.id)}</td>
+        <td>${av === 'available' ? '<span class="muted small">—</span>' : `<span class="chip ${AVAILABILITY[av].chip}">${AVAILABILITY[av].label}</span>`}</td>
+        <td>${ms.length ? `${w}–${ms.length - w}` : '<span class="muted">—</span>'}</td>
+        <td>${wlDots(r.p.id)}</td>
+        <td class="small">${pos ? POSITIONS[pos.best].label : '<span class="muted">—</span>'}</td>
+        <td class="no-print" style="white-space:nowrap">
+          <button class="btn btn-sm" data-move="up" data-id="${r.p.id}" ${r.rank === 1 ? 'disabled' : ''}>↑</button>
+          <button class="btn btn-sm" data-move="down" data-id="${r.p.id}" ${r.rank === rows.length ? 'disabled' : ''}>↓</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>
+  <div class="btn-row no-print"><button class="btn btn-sm" id="ladder-print">Print ladder</button><button class="btn btn-sm" id="ladder-reset">Reseed from form</button></div>
+  </div>`
+  : '<div class="empty"><h3>No roster players yet</h3><p>The ladder ranks everyone with roster status. Add players and they\'ll seed automatically by current form.</p><div class="btn-row center"><a class="btn btn-primary" href="#/players">Add players</a></div></div>'}`;
+
+  const logChallenge = challengerWon => {
+    const challengerId = document.getElementById('ch-challenger').value;
+    const defenderId = document.getElementById('ch-defender').value;
+    if (challengerId === defenderId) { toast('Pick two different players'); return; }
+    const score = document.getElementById('ch-score').value.trim();
+    const winnerId = challengerWon ? challengerId : defenderId;
+    const loserId = challengerWon ? defenderId : challengerId;
+    const date = todayISO();
+    state.matches.push(
+      { id: uid(), playerId: winnerId, partnerId: null, date, opponent: playerName(loserId), discipline: 'MS', result: 'W', score, ratings: {}, notes: 'Ladder challenge', context: 'ladder' },
+      { id: uid(), playerId: loserId, partnerId: null, date, opponent: playerName(winnerId), discipline: 'MS', result: 'L', score, ratings: {}, notes: 'Ladder challenge', context: 'ladder' },
+    );
+    saveState();
+    if (challengerWon) {
+      const newRank = applyChallengeResult(challengerId, defenderId);
+      toast(newRank ? `${playerName(challengerId)} moves to #${newRank}` : 'Result logged — no rank change');
+    } else {
+      toast('Defender held their spot');
+    }
+    renderLadder();
+  };
+
+  document.getElementById('ch-challenger-won')?.addEventListener('click', () => logChallenge(true));
+  document.getElementById('ch-defender-won')?.addEventListener('click', () => logChallenge(false));
+  document.getElementById('ladder-print')?.addEventListener('click', () => window.print());
+  document.getElementById('ladder-reset')?.addEventListener('click', () => {
+    if (!confirm('Reseed the ladder from current win rates? Manual order is lost.')) return;
+    state.ladder = [];
+    saveState();
+    ladderIds();
+    toast('Ladder reseeded');
+    renderLadder();
+  });
+  VIEW.querySelectorAll('[data-move]').forEach(b => b.addEventListener('click', () => {
+    if (moveOnLadder(b.dataset.id, b.dataset.move === 'up' ? -1 : 1)) renderLadder();
+  }));
+}
+
+/* ---------- player vs player ---------- */
+
+function renderVersus(_, params) {
+  const roster = state.players.filter(p => p.status !== 'cut').sort((a, b) => a.name.localeCompare(b.name));
+  const aId = params?.get('a') || roster[0]?.id || '';
+  const bId = params?.get('b') || roster[1]?.id || '';
+  const a = getPlayer(aId), b = getPlayer(bId);
+
+  const pick = (id, which) => `<select data-vs="${which}">${roster.map(p => `<option value="${p.id}" ${p.id === id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`;
+
+  if (!a || !b) {
+    VIEW.innerHTML = '<div class="empty"><h3>Need two players</h3><p>Add at least two players to compare them side by side.</p><div class="btn-row center"><a class="btn btn-primary" href="#/players">Add players</a></div></div>';
+    return;
+  }
+
+  const stat = (label, av, bv) => {
+    const num = v => (typeof v === 'number' ? v : null);
+    const an = num(av), bn = num(bv);
+    const lead = an != null && bn != null && an !== bn ? (an > bn ? 'a' : 'b') : null;
+    return `<tr>
+      <td style="text-align:right;${lead === 'a' ? 'font-weight:750;color:var(--link)' : ''}">${av ?? '—'}</td>
+      <td class="small muted" style="text-align:center;white-space:nowrap">${label}</td>
+      <td style="${lead === 'b' ? 'font-weight:750;color:var(--link)' : ''}">${bv ?? '—'}</td>
+    </tr>`;
+  };
+
+  const profA = skillProfile(aId), profB = skillProfile(bId);
+  const formA = recentForm(aId), formB = recentForm(bId);
+  const posA = positionScores(aId), posB = positionScores(bId);
+  const msA = playerMatches(aId), msB = playerMatches(bId);
+  const rec = teammateRecord(aId, bId);
+  const pct = v => (v == null ? null : Math.round(v * 100) + '%');
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Head to head</h1><p class="muted">Compare two players before you set the lineup</p></div>
+
+  <div class="card">
+    <div class="grid2" style="align-items:center">
+      <div>${pick(aId, 'a')}</div>
+      <div>${pick(bId, 'b')}</div>
+    </div>
+    ${rec.total ? `<p class="center" style="margin-top:14px;font-weight:700">${esc(a.name)} leads ${rec.aWins}–${rec.bWins}${rec.aWins === rec.bWins ? ' (level)' : ''} in ${rec.total} meeting${rec.total === 1 ? '' : 's'}</p>`
+      : '<p class="center small muted" style="margin-top:14px">They haven\'t played each other yet — log a ladder challenge to settle it.</p>'}
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Skills</div>
+      ${profA || profB ? radarCompareSVG(profA || {}, profB || {}) : '<p class="muted">No skill data for either player yet.</p>'}
+      <p class="small" style="margin-top:8px">
+        <span style="color:var(--link);font-weight:700">──</span> ${esc(a.name)} &nbsp;
+        <span style="color:var(--muted);font-weight:700">╌╌</span> ${esc(b.name)}
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-title">By the numbers</div>
+      <table><tbody>
+        ${stat('Matches', msA.length, msB.length)}
+        ${stat('Win rate', pct(winRate(aId)), pct(winRate(bId)))}
+        ${stat('Last 5', formA ? `${formA.recentWins}/${formA.recentTotal}` : null, formB ? `${formB.recentWins}/${formB.recentTotal}` : null)}
+        ${stat('Singles fit', posA?.singles, posB?.singles)}
+        ${stat('Doubles front', posA?.front, posB?.front)}
+        ${stat('Doubles back', posA?.back, posB?.back)}
+        ${stat('Ladder rank', ladderRank(aId) ? '#' + ladderRank(aId) : null, ladderRank(bId) ? '#' + ladderRank(bId) : null)}
+      </tbody></table>
+    </div>
+  </div>`;
+
+  VIEW.querySelectorAll('[data-vs]').forEach(sel => sel.addEventListener('change', () => {
+    const nextA = VIEW.querySelector('[data-vs="a"]').value;
+    const nextB = VIEW.querySelector('[data-vs="b"]').value;
+    location.hash = `#/vs?a=${nextA}&b=${nextB}`;
+  }));
+}
+
+/* ---------- guide (public) ---------- */
+
+function renderGuide() {
+  const coach = isCoach();
+  const step = (n, title, body) => `
+    <div style="display:flex;gap:14px;margin-bottom:16px">
+      <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px">${n}</div>
+      <div style="min-width:0"><h3 style="margin:2px 0 4px">${title}</h3><p class="small muted" style="margin:0">${body}</p></div>
+    </div>`;
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>How to use ShuttleIQ</h1><p class="muted">Everything stays on your device — no accounts, no server</p></div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">For coaches — first 10 minutes</div>
+      ${step(1, 'Add your roster', 'Players → type names (you can paste several at once: "Alex, Ben, Chris") → Add.')}
+      ${step(2, 'Score matches live', 'Score → pick the player and opponent → tap the big numbers as points happen. Rally scoring, deuce and the 30-point cap are handled for you, and the finished match saves straight to the log.')}
+      ${step(3, 'Or log a finished match', 'Matches → player, opponent, who won. The 1–5 skill ratings are optional but they power the radar, position fit, and depth chart.')}
+      ${step(4, 'Run tryouts', 'Tryouts → add prospects → tap 1–5 on each drill while they play. The board re-ranks itself. Promote or cut when you decide.')}
+      ${step(5, 'Settle the pecking order', 'Ladder → record challenges. Win and you take that player\'s spot; it logs the match for both players automatically.')}
+      ${step(6, 'Build a lineup', 'Rosters → New roster → Auto-suggest. It uses position fit, win rate and pair chemistry, and it never picks anyone marked injured or away.')}
+      ${step(7, 'Back it up', 'Settings → Export backup. Browsers can clear local data, so keep a file at the end of each week.')}
+    </div>
+    <div class="card">
+      <div class="card-title">For players</div>
+      ${step(1, 'Sign in as yourself', 'Enter as player → pick your name so your stats and clips are yours.')}
+      ${step(2, 'Film one minute', 'Analyze → Start camera → Record. Prop the phone at the back corner so your whole half-court is in frame. It stops at 60 seconds.')}
+      ${step(3, 'Read the feedback', 'You get 0–100 skill scores plus coaching cards. Tap any card to jump to that exact moment in your clip.')}
+      ${step(4, 'Compare with a pro', 'Compare → pick a pro → paste a YouTube link, or load a downloaded clip for synced slow-motion and an AI breakdown.')}
+      ${step(5, 'Work your weak spots', 'Drills shows the drills matched to your two lowest skills, with a target for each.')}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Good filming = good feedback</div>
+    <div class="grid3">
+      <div><h3>Camera position</h3><p class="small muted">Back corner of the court, waist height or above, phone landscape. The AI needs to see your feet and the shuttle.</p></div>
+      <div><h3>What to film</h3><p class="small muted">Real rallies, not warm-ups. A minute of actual play beats five minutes of standing around.</p></div>
+      <div><h3>Use Focus</h3><p class="small muted">Set Focus to one skill (footwork, smash, net…) and the feedback goes deeper on it instead of covering everything.</p></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Setting up the AI (free)</div>
+      <p class="small">The whole app works without AI. To turn on video analysis, pro comparison, and AI coach notes:</p>
+      <p class="small muted" style="margin-bottom:6px">Settings → AI coach → tap <b>Google Gemini</b> → paste a free key from <b>aistudio.google.com</b> → Test key. OpenRouter and Groq also have free tiers and one-tap presets.</p>
+      <p class="small muted">The key lives only in this browser and is stripped out of backup files. On a shared device, clear it when you're done.</p>
+      ${coach ? '<div class="btn-row"><a class="btn btn-sm" href="#/settings">Open Settings</a></div>' : ''}
+    </div>
+    <div class="card">
+      <div class="card-title">Picking lineups with evidence</div>
+      <p class="small muted"><b>Availability</b> — set injured/away on the Players page and auto-suggest skips them; if you place them anyway, the roster warns you.</p>
+      <p class="small muted"><b>Head to head</b> — compare any two players side by side: overlaid skill radars, form, position fit, ladder rank, and their record against each other.</p>
+      <p class="small muted"><b>Insights</b> — depth chart, the team's weakest skills with drills, per-opponent records, and which doubles pairs actually win together.</p>
+      <p class="small muted"><b>AI match brief</b> — on a roster, generates a tactical brief from your real history against that opponent (needs an API key).</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Good to know</div>
+      <p class="small muted"><b>Install it.</b> On a phone, use your browser's "Add to Home Screen" — it opens like an app and works without signal in the gym.</p>
+      <p class="small muted"><b>Your data is local.</b> Each device keeps its own copy. To move a team to another device, export a backup and import it there.</p>
+      <p class="small muted"><b>Videos never leave the device.</b> Saved clips stay in this browser; only a handful of still frames go to the AI provider during analysis.</p>
+      <p class="small muted"><b>The coach passcode is a soft gate</b> — it keeps players out of coach tools on a shared tablet, not a determined person with developer tools.</p>
+    </div>
+  </div>`;
+}
+
 /* ---------- settings (coach) ---------- */
 
 function renderSettings() {
@@ -1897,11 +2488,17 @@ function renderSettings() {
       <label>Repeat<input type="password" id="pass-2" inputmode="numeric" autocomplete="new-password"></label>
     </div>
     <div class="btn-row"><button class="btn btn-sm" id="pass-save">Change passcode</button><span class="small muted" id="pass-status"></span></div>
+    <hr>
+    <p class="small muted">${recoveryIsSet()
+      ? 'A recovery code is saved on this device — it can reset a forgotten passcode without touching your team data. Lost it? Generate a new one (the old code stops working).'
+      : 'No recovery code yet. Without one, a forgotten passcode can only be cleared by wiping this site\'s browser data — which erases the team too.'}</p>
+    <div class="btn-row"><button class="btn btn-sm" id="rec-new">${recoveryIsSet() ? 'Generate a new recovery code' : 'Create a recovery code'}</button></div>
   </div>
 
   <div class="card">
     <div class="card-title">About</div>
-    <p class="small muted">ShuttleIQ is a local-first app: no server, no accounts — data stays in this browser. Use Export/Import to move it between devices. Built for school badminton teams: tryout scouting, form tracking, position fit, lineups, and AI video coaching.</p>
+    <p class="small muted">ShuttleIQ v${esc(APP_VERSION)} — a local-first app: no server, no accounts, data stays in this browser. Use Export/Import to move it between devices.</p>
+    <div class="btn-row"><a class="btn btn-sm" href="#/guide">Open the guide</a></div>
   </div>`;
 
   document.getElementById('set-team-save').addEventListener('click', () => {
@@ -2011,9 +2608,16 @@ function renderSettings() {
       let line = `${state.players.length} players · ${state.matches.length} matches · ${clips.length} saved clip${clips.length === 1 ? '' : 's'}`;
       const est = await navigator.storage?.estimate?.();
       if (est?.usage != null) line += ` · ${(est.usage / 1048576).toFixed(1)} MB of browser storage used`;
+      const days = daysSinceBackup();
+      line += days === null ? ' · never backed up' : days === 0 ? ' · backed up today' : ` · last backup ${days} day${days === 1 ? '' : 's'} ago`;
       if (el) el.textContent = line;
     } catch { /* meter is best-effort */ }
   })();
+
+  document.getElementById('rec-new').addEventListener('click', () => {
+    if (recoveryIsSet() && !confirm('Generate a new recovery code? The old one stops working immediately.')) return;
+    issueRecoveryCode();
+  });
 
   document.getElementById('pass-save').addEventListener('click', () => {
     const a = document.getElementById('pass-1').value.trim();

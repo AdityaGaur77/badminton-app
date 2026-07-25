@@ -1,5 +1,6 @@
 /* ShuttleIQ v6 — persistence: localStorage state + IndexedDB video clips */
 
+const APP_VERSION = '6.3';
 const STORE_KEY = 'shuttleiq_v6';
 const LEGACY_KEY = 'shuttleiq_v5';
 
@@ -11,13 +12,30 @@ const DEFAULT_STATE = {
     baseUrl: '',           // OpenAI-compatible endpoints only
     teamName: 'ShuttleIQ',
     coachPass: '',         // hash of the coach passcode; '' means not set up yet
+    recoveryHash: '',      // hash of the one-time recovery code (resets a forgotten passcode)
     theme: 'midnight',     // 'midnight' | 'court' | 'clean'
+    lastBackup: '',        // ISO date of the last exported backup, for the reminder
   },
-  players: [],   // {id, name, year, hand, status:'roster'|'tryout'|'cut', tryoutScores, aiNote, createdAt}
+  players: [],   // {id, name, year, hand, status:'roster'|'tryout'|'cut', availability, tryoutScores, aiNote, notes, createdAt}
   matches: [],   // {id, playerId, partnerId, date, opponent, discipline, result, score, ratings, notes, context}
   sessions: [],  // {id, playerId, date, label, focus, scores, feedback[], clipId}
   rosters: [],   // {id, name, date, slots:[{code, label, type:'singles'|'doubles', playerIds:[]}]}
+  ladder: [],    // playerIds in rank order — the team's internal challenge ladder
 };
+
+const AVAILABILITY = {
+  available: { label: 'Available', chip: 'chip-w' },
+  injured: { label: 'Injured', chip: 'chip-l' },
+  absent: { label: 'Away', chip: 'chip-neutral' },
+};
+
+function playerAvailability(p) {
+  return AVAILABILITY[p?.availability] ? p.availability : 'available';
+}
+
+function isAvailable(p) {
+  return playerAvailability(p) === 'available';
+}
 
 let state = loadState();
 
@@ -49,12 +67,15 @@ function mergeState(parsed) {
       baseUrl: str(s.baseUrl),
       teamName: str(s.teamName) || base.settings.teamName,
       coachPass: str(s.coachPass),
+      recoveryHash: str(s.recoveryHash),
       theme: ['midnight', 'court', 'clean'].includes(s.theme) ? s.theme : base.settings.theme,
+      lastBackup: str(s.lastBackup),
     },
     players: Array.isArray(parsed.players) ? parsed.players : [],
     matches: Array.isArray(parsed.matches) ? parsed.matches : [],
     sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
     rosters: Array.isArray(parsed.rosters) ? parsed.rosters : [],
+    ladder: Array.isArray(parsed.ladder) ? parsed.ladder.filter(id => typeof id === 'string') : [],
   };
 }
 
@@ -117,16 +138,140 @@ function checkCoachPass(code) {
   return coachPassIsSet() && hashPass(code) === state.settings.coachPass;
 }
 
+/* ---------- recovery code ----------
+   Shown once when the passcode is created so a forgotten passcode doesn't
+   mean wiping the season. Same soft-gate threat model as the passcode
+   itself: it protects against forgetting, not against someone with devtools. */
+
+function makeRecoveryCode() {
+  // no 0/O/1/I — these get written on paper and misread
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  const chars = [...bytes].map(b => alphabet[b % alphabet.length]);
+  return [chars.slice(0, 4), chars.slice(4, 8), chars.slice(8, 12)].map(g => g.join('')).join('-');
+}
+
+function normalizeRecovery(code) {
+  return String(code).toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function setRecoveryCode(code) {
+  state.settings.recoveryHash = hashPass(normalizeRecovery(code));
+  saveState();
+}
+
+function checkRecoveryCode(code) {
+  return Boolean(state.settings.recoveryHash) && hashPass(normalizeRecovery(code)) === state.settings.recoveryHash;
+}
+
+function recoveryIsSet() {
+  return Boolean(state.settings.recoveryHash);
+}
+
+/* ---------- challenge ladder ----------
+   How school teams actually settle lineup order: you play the person above
+   you, and if you win you take their spot. Everyone below the loser holds. */
+
+function ladderIds() {
+  const roster = state.players.filter(p => p.status === 'roster');
+  const rosterIds = new Set(roster.map(p => p.id));
+  // keep stored order, drop anyone no longer on the roster
+  const ordered = state.ladder.filter(id => rosterIds.has(id));
+  // seed newcomers at the bottom, strongest first so a fresh ladder is sensible
+  const missing = roster
+    .filter(p => !ordered.includes(p.id))
+    .sort((a, b) => (winRate(b.id) ?? 0.4) - (winRate(a.id) ?? 0.4))
+    .map(p => p.id);
+  const full = [...ordered, ...missing];
+  if (full.length !== state.ladder.length || full.some((id, i) => state.ladder[i] !== id)) {
+    state.ladder = full;
+    saveState();
+  }
+  return full;
+}
+
+function ladderRank(playerId) {
+  const i = ladderIds().indexOf(playerId);
+  return i === -1 ? null : i + 1;
+}
+
+/* Challenger beat the defender: challenger takes the defender's rank and
+   everyone between shifts down one. Returns the new rank, or null if the
+   challenge didn't move anyone (challenger already ranked higher). */
+function applyChallengeResult(challengerId, defenderId) {
+  const ids = ladderIds();
+  const from = ids.indexOf(challengerId);
+  const to = ids.indexOf(defenderId);
+  if (from === -1 || to === -1 || from <= to) return null;
+  ids.splice(from, 1);
+  ids.splice(to, 0, challengerId);
+  state.ladder = ids;
+  saveState();
+  return to + 1;
+}
+
+function moveOnLadder(playerId, delta) {
+  const ids = ladderIds();
+  const i = ids.indexOf(playerId);
+  const j = i + delta;
+  if (i === -1 || j < 0 || j >= ids.length) return false;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  state.ladder = ids;
+  saveState();
+  return true;
+}
+
+/* ---------- backup freshness ----------
+   Browsers can evict local data (iOS clears storage for sites left unused),
+   so a coach with a season logged should be nudged to keep a backup file. */
+
+function daysSinceBackup() {
+  if (!state.settings.lastBackup) return null;
+  const then = new Date(state.settings.lastBackup);
+  if (isNaN(then)) return null;
+  return Math.floor((Date.now() - then.getTime()) / 86400000);
+}
+
+function backupIsStale() {
+  if (state.matches.length < 5 && state.players.length < 5) return false; // nothing worth protecting yet
+  const days = daysSinceBackup();
+  return days === null || days >= 14;
+}
+
+/* Some managed school devices and private-browsing modes block Storage
+   entirely — reads/writes throw. Fall back to in-memory session state so
+   logging in still works instead of silently doing nothing. */
+const memorySession = {};
+
+function sessionGet(key) {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return memorySession[key] ?? null;
+  }
+}
+
+function sessionSet(key, value) {
+  memorySession[key] = value;
+  try { sessionStorage.setItem(key, value); } catch { /* memory-only for this tab */ }
+}
+
+function sessionRemove(key) {
+  delete memorySession[key];
+  try { sessionStorage.removeItem(key); } catch { /* already memory-only */ }
+}
+
 function getRole() {
-  return sessionStorage.getItem('shuttleiq_role') || null; // 'coach' | 'student' | null
+  return sessionGet('shuttleiq_role') || null; // 'coach' | 'student' | null
 }
 
 function setRole(role) {
   if (role) {
-    sessionStorage.setItem('shuttleiq_role', role);
+    sessionSet('shuttleiq_role', role);
   } else {
-    sessionStorage.removeItem('shuttleiq_role');
-    sessionStorage.removeItem('shuttleiq_student');
+    sessionRemove('shuttleiq_role');
+    sessionRemove('shuttleiq_student');
   }
 }
 
@@ -137,12 +282,12 @@ function isCoach() {
 /* Which roster player a logged-in student is — lets their dashboard show
    their own stats. Null = signed in as a guest. */
 function getStudentId() {
-  return sessionStorage.getItem('shuttleiq_student') || null;
+  return sessionGet('shuttleiq_student') || null;
 }
 
 function setStudentId(id) {
-  if (id) sessionStorage.setItem('shuttleiq_student', id);
-  else sessionStorage.removeItem('shuttleiq_student');
+  if (id) sessionSet('shuttleiq_student', id);
+  else sessionRemove('shuttleiq_student');
 }
 
 function currentStudent() {
@@ -237,7 +382,7 @@ function exportData() {
     version: 6,
     exportedAt: new Date().toISOString(),
     ...state,
-    settings: { ...state.settings, apiKey: '', coachPass: '' },
+    settings: { ...state.settings, apiKey: '', coachPass: '', recoveryHash: '' },
   };
   const blob = new Blob([JSON.stringify(safe, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -246,6 +391,8 @@ function exportData() {
   a.download = `shuttleiq-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  state.settings.lastBackup = new Date().toISOString();
+  saveState();
 }
 
 function importData(file, done) {
@@ -258,9 +405,14 @@ function importData(file, done) {
       // roster shouldn't erase the API key or log the coach out.
       const keepKey = state.settings.apiKey;
       const keepPass = state.settings.coachPass;
+      const keepRecovery = state.settings.recoveryHash;
+      const keepTheme = state.settings.theme;
       state = mergeState(parsed);
       state.settings.apiKey = parsed.settings?.apiKey || keepKey;
       state.settings.coachPass = keepPass;
+      state.settings.recoveryHash = keepRecovery;
+      state.settings.theme = keepTheme;
+      applyTheme(keepTheme);
       saveState();
       done(null);
     } catch (err) {
@@ -284,7 +436,8 @@ function loadSampleData() {
   ];
   const players = names.map(([name, year], i) => ({
     id: 'p' + i, name, year, hand: i % 3 === 0 ? 'Left' : 'Right', status: 'roster',
-    tryoutScores: null, aiNote: null, createdAt: new Date().toISOString(),
+    availability: i === 5 ? 'injured' : i === 7 ? 'absent' : 'available',
+    tryoutScores: null, aiNote: null, notes: '', createdAt: new Date().toISOString(),
   }));
   players.push(
     { id: 'p8', name: 'Ivan Petrov', year: 9, hand: 'Right', status: 'tryout', tryoutScores: { serve: 4, footwork: 3, smash: 4, net: 2, rally: 3, sense: 4, athleticism: 4 }, aiNote: null, createdAt: new Date().toISOString() },
@@ -357,5 +510,6 @@ function loadSampleData() {
   state.matches = matches;
   state.sessions = sessions;
   state.rosters = rosters;
+  state.ladder = [];   // rebuilt from form the first time the ladder is opened
   saveState();
 }
