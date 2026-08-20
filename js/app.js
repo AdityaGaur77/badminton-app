@@ -2183,16 +2183,18 @@ function renderScorerBoard(s) {
 /* ---------- challenge ladder ---------- */
 
 function renderLadder() {
+  const coach = isCoach();   // players can see the ladder; only the coach moves anyone on it
   const ids = ladderIds();
   const rows = ids.map((id, i) => ({ p: getPlayer(id), rank: i + 1 })).filter(r => r.p);
+  const meId = getStudentId();
 
   VIEW.innerHTML = `
   <div class="page-head">
     <h1>Challenge ladder</h1>
-    <p class="muted">Beat the player above you and you take their spot</p>
+    <p class="muted">${coach ? 'Beat the player above you and you take their spot' : 'Where the team stands — your coach records challenges'}</p>
   </div>
 
-  ${rows.length >= 2 ? `
+  ${coach && rows.length >= 2 ? `
   <div class="card">
     <div class="card-title">Record a challenge</div>
     <div class="form-grid">
@@ -2208,31 +2210,32 @@ function renderLadder() {
   </div>` : ''}
 
   ${rows.length ? `<div class="card"><div class="table-wrap"><table>
-    <thead><tr><th>#</th><th>Player</th><th>Status</th><th>Record</th><th>Last 8</th><th>Fit</th><th class="no-print">Move</th></tr></thead>
+    <thead><tr><th>#</th><th>Player</th><th>Status</th><th>Record</th><th>Last 8</th><th>Fit</th>${coach ? '<th class="no-print">Move</th>' : ''}</tr></thead>
     <tbody>${rows.map(r => {
       const ms = playerMatches(r.p.id);
       const w = ms.filter(m => m.result === 'W').length;
       const pos = positionScores(r.p.id);
       const av = playerAvailability(r.p);
-      return `<tr>
+      return `<tr${r.p.id === meId ? ' style="background:var(--accent-soft)"' : ''}>
         <td><span class="rank-num">${r.rank}</span></td>
-        <td>${playerLink(r.p.id)}</td>
+        <td>${playerLink(r.p.id)}${r.p.id === meId ? ' <span class="tag tag-accent">you</span>' : ''}</td>
         <td>${av === 'available' ? '<span class="muted small">—</span>' : `<span class="chip ${AVAILABILITY[av].chip}">${AVAILABILITY[av].label}</span>`}</td>
         <td>${ms.length ? `${w}–${ms.length - w}` : '<span class="muted">—</span>'}</td>
         <td>${wlDots(r.p.id)}</td>
         <td class="small">${pos ? POSITIONS[pos.best].label : '<span class="muted">—</span>'}</td>
-        <td class="no-print" style="white-space:nowrap">
+        ${coach ? `<td class="no-print" style="white-space:nowrap">
           <button class="btn btn-sm" data-move="up" data-id="${r.p.id}" ${r.rank === 1 ? 'disabled' : ''}>↑</button>
           <button class="btn btn-sm" data-move="down" data-id="${r.p.id}" ${r.rank === rows.length ? 'disabled' : ''}>↓</button>
-        </td>
+        </td>` : ''}
       </tr>`;
     }).join('')}</tbody>
   </table></div>
-  <div class="btn-row no-print"><button class="btn btn-sm" id="ladder-print">Print ladder</button><button class="btn btn-sm" id="ladder-reset">Reseed from form</button></div>
+  <div class="btn-row no-print"><button class="btn btn-sm" id="ladder-print">Print ladder</button>${coach ? '<button class="btn btn-sm" id="ladder-reset">Reseed from form</button>' : ''}</div>
   </div>`
   : '<div class="empty"><h3>No roster players yet</h3><p>The ladder ranks everyone with roster status. Add players and they\'ll seed automatically by current form.</p><div class="btn-row center"><a class="btn btn-primary" href="#/players">Add players</a></div></div>'}`;
 
   const logChallenge = challengerWon => {
+    if (!isCoach()) return;   // belt and braces: the form isn't rendered for players
     const challengerId = document.getElementById('ch-challenger').value;
     const defenderId = document.getElementById('ch-defender').value;
     if (challengerId === defenderId) { toast('Pick two different players'); return; }
@@ -2266,6 +2269,7 @@ function renderLadder() {
     renderLadder();
   });
   VIEW.querySelectorAll('[data-move]').forEach(b => b.addEventListener('click', () => {
+    if (!isCoach()) return;
     if (moveOnLadder(b.dataset.id, b.dataset.move === 'up' ? -1 : 1)) renderLadder();
   }));
 }
