@@ -17,6 +17,7 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 
 ### For players
 - **Analyze** — Record up to 60 seconds from your camera (auto-stops) or upload a clip. The AI returns timestamped coaching cards (critical / suggestion / positive) plus 0–100 scores across Footwork, Smash, Serve, Defense, Net play, and Consistency. Click a card to jump to that moment. Clips can be saved to the library. Without an API key you can preview a clearly-labeled sample analysis (never saved).
+  - **How the footage is read.** With **Gemini** the actual video is sent, so the model sees motion — footwork sequences, split-step timing, the swing through contact. With any other provider the app scans the clip for the moments with the most movement and sends those frames, rather than sampling blindly every few seconds. Results say which method was used, report the model's own confidence, and list anything it couldn't assess.
 - **Compare** — Pick a pro from the study list (14 players across all disciplines, each with specific technique points to watch for and a YouTube search link), then either paste a YouTube link to watch them side by side, or load a local pro clip for synced slow-mo/frame-step playback and an AI breakdown of the key differences.
 - **Drills** — 18 standard drills (3 per skill, Beginner→Advanced) with concrete descriptions and measurable targets. Linked players see drills recommended from their current weaknesses.
 
@@ -42,9 +43,10 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
   - **Groq** — key from console.groq.com; fast free tier with Llama vision models.
   - Paid/other: **Anthropic Claude** (console.anthropic.com) or any OpenAI-compatible endpoint via a custom base URL.
 - **Three themes** in Settings → Appearance (or the moon button in the header): **Midnight** (dark, volt accent — default), **Court** (varsity green), **Clean** (minimal light). The choice is saved on the device.
-- **In-app guide** — a Guide page for coaches and players covering the first ten minutes, filming tips, and setup.
+- **Guided tour** — a two-minute walkthrough for coaches and one for players. It loads a sample team, steps through every screen, then clears it. Any real data you already have is set aside while the demo runs and restored on exit, so the tour is always safe to take. A fresh install ships with **no sample data at all**.
+- **In-app guide** — a written Guide page for coaches and players covering the first ten minutes, filming tips, and setup.
 - **Don't lose the season** — the coach passcode comes with a one-time **recovery code** (a forgotten passcode no longer means wiping the team), and the dashboard nudges you to export a backup when one is overdue.
-- Settings also has JSON export/import for backups, a sample-data loader to explore the app, and a storage meter.
+- Settings also has JSON export/import for backups, a **guided tour**, and a storage meter.
 - **Works offline & installs like an app** — once opened over http(s), a service worker caches the app (gym wifi won't take it down), and on a phone you can "Add to Home Screen" for a standalone app experience.
 
 ### Files

@@ -69,23 +69,119 @@ function ensureDuration(videoEl) {
   });
 }
 
-/* Sample evenly-spaced JPEG frames from a loaded <video>. */
-async function extractFrames(videoEl, frameCount = 8) {
-  const duration = await ensureDuration(videoEl);
-  if (!duration || !isFinite(duration)) throw new Error('Could not read the video duration — reload the clip and try again.');
+/* Grab full-resolution JPEG frames at specific timestamps. */
+async function extractFramesAt(videoEl, times) {
   const canvas = document.createElement('canvas');
   const scale = Math.min(1, 768 / videoEl.videoWidth);
   canvas.width = Math.round(videoEl.videoWidth * scale);
   canvas.height = Math.round(videoEl.videoHeight * scale);
   const ctx = canvas.getContext('2d');
   const frames = [];
-  for (let i = 0; i < frameCount; i++) {
-    const time = (duration * (i + 0.5)) / frameCount;
+  for (const time of times) {
     await seekTo(videoEl, time);
     ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
     frames.push({ time, b64: canvas.toDataURL('image/jpeg', 0.7).split(',')[1] });
   }
   return frames;
+}
+
+/* Sample evenly-spaced JPEG frames from a loaded <video>. */
+async function extractFrames(videoEl, frameCount = 8) {
+  const duration = await ensureDuration(videoEl);
+  if (!duration || !isFinite(duration)) throw new Error('Could not read the video duration — reload the clip and try again.');
+  const times = [];
+  for (let i = 0; i < frameCount; i++) times.push((duration * (i + 0.5)) / frameCount);
+  return extractFramesAt(videoEl, times);
+}
+
+/* ---------- motion-aware sampling ----------
+   Evenly-spaced frames across a minute mostly catch players standing between
+   rallies. This does a fast low-res pass to find where movement actually
+   happens, then pulls the real frames from those moments instead. */
+
+async function motionProfile(videoEl, maxSamples, onProgress) {
+  const duration = await ensureDuration(videoEl);
+  if (!duration || !isFinite(duration)) throw new Error('Could not read the video duration — reload the clip and try again.');
+  const w = 64, h = 36;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const samples = [];
+  let prev = null;
+  for (let i = 0; i < maxSamples; i++) {
+    const time = (duration * (i + 0.5)) / maxSamples;
+    await seekTo(videoEl, time);
+    ctx.drawImage(videoEl, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+    let score = 0;
+    if (prev) {
+      for (let p = 0; p < data.length; p += 4) {
+        score += Math.abs(data[p] - prev[p]) + Math.abs(data[p + 1] - prev[p + 1]) + Math.abs(data[p + 2] - prev[p + 2]);
+      }
+    }
+    samples.push({ time, score });
+    prev = data;
+    if (onProgress && i % 6 === 0) onProgress(Math.round((i / maxSamples) * 100));
+  }
+  return { samples, duration };
+}
+
+/* Highest-motion moments, kept apart so we don't return one rally eight times. */
+function pickPeaks(samples, count, minGap) {
+  const chosen = [];
+  for (const s of [...samples].sort((a, b) => b.score - a.score)) {
+    if (chosen.length >= count) break;
+    if (chosen.every(c => Math.abs(c.time - s.time) >= minGap)) chosen.push(s);
+  }
+  return chosen.sort((a, b) => a.time - b.time);
+}
+
+async function extractKeyFrames(videoEl, frameCount = 8, onProgress) {
+  const maxSamples = Math.max(16, Math.min(48, Math.round((videoEl.duration || 60) * 1.5)));
+  const { samples, duration } = await motionProfile(videoEl, maxSamples, onProgress);
+  // Ignore near-zero jitter, but keep genuinely quiet clips workable.
+  const peakScore = Math.max(0, ...samples.map(s => s.score));
+  const active = samples.filter(s => s.score > peakScore * 0.15);
+
+  // Nothing moved at all (static clip, or a browser that won't hand over pixels).
+  if (peakScore === 0 || active.length < 2) {
+    return { frames: await extractFrames(videoEl, frameCount), mode: 'even' };
+  }
+
+  const minGap = Math.max(0.4, duration / (frameCount * 2.5));
+  const times = pickPeaks(active, frameCount, minGap).map(p => p.time);
+
+  // Fewer bursts than frames requested — fill the rest with evenly spaced
+  // moments so the coach still sees the whole clip, not just its busiest second.
+  if (times.length < frameCount) {
+    for (let i = 0; i < frameCount && times.length < frameCount; i++) {
+      const t = (duration * (i + 0.5)) / frameCount;
+      if (times.every(x => Math.abs(x - t) >= minGap)) times.push(t);
+    }
+  }
+  times.sort((a, b) => a - b);
+  const frames = await extractFramesAt(videoEl, times.slice(0, frameCount));
+  return { frames, mode: 'motion' };
+}
+
+/* ---------- native video (Gemini) ----------
+   Gemini reads actual video, not stills — it sees the swing, not a pose. This
+   is by far the best analysis this app can produce, so it's used whenever the
+   provider is Gemini and the clip is small enough to inline. */
+
+const INLINE_VIDEO_LIMIT = 12 * 1024 * 1024; // ~16MB once base64-encoded
+
+function canSendNativeVideo(blob) {
+  return aiConfig().provider === 'gemini' && blob && blob.size > 0 && blob.size <= INLINE_VIDEO_LIMIT;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(new Error('Could not read the video file.'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function seekTo(videoEl, time) {
@@ -148,9 +244,11 @@ async function callAnthropic(cfg, parts, maxTokens) {
 }
 
 async function callGemini(cfg, parts, maxTokens) {
-  const gParts = parts.map(p => p.text != null
-    ? { text: p.text }
-    : { inline_data: { mime_type: 'image/jpeg', data: p.imageB64 } });
+  const gParts = parts.map(p => {
+    if (p.text != null) return { text: p.text };
+    if (p.videoB64) return { inline_data: { mime_type: p.mimeType || 'video/webm', data: p.videoB64 } };
+    return { inline_data: { mime_type: 'image/jpeg', data: p.imageB64 } };
+  });
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent`;
   const response = await fetch(url, {
     method: 'POST',
@@ -230,25 +328,80 @@ function frameParts(frames) {
   return frames.map(f => ({ imageB64: f.b64 }));
 }
 
-/* Full gameplay analysis — returns {feedback: [...], scores: {...}} */
-async function analyzeGameplay(frames, focus) {
-  const prompt = `You are an expert badminton coach reviewing gameplay footage. The images are chronological frames sampled from a short clip.
-Frame timestamps:
-${frames.map((f, i) => `Frame ${i + 1}: ${fmtTime(f.time)}`).join('\n')}
-${FOCUS_MAP[focus] || FOCUS_MAP.all}
-
-Return ONLY a JSON object, no markdown fences, with this shape:
+const OUTPUT_SHAPE = `Return ONLY a JSON object, no markdown fences, with this shape:
 {
   "feedback": [
     {"timestamp": "M:SS", "type": "critical|suggestion|positive", "title": "max 6 words", "body": "2-3 sentences of specific coaching", "tip": "one concrete drill or fix"}
   ],
-  "scores": {"footwork": 0-100, "smash": 0-100, "serve": 0-100, "defense": 0-100, "net": 0-100, "consistency": 0-100}
-}
-Rules: 5-9 feedback items, include at least one positive, timestamps must match the provided frames, scores must be honest (a school player rarely exceeds 75).`;
+  "scores": {"footwork": 0-100, "smash": 0-100, "serve": 0-100, "defense": 0-100, "net": 0-100, "consistency": 0-100},
+  "confidence": "high|medium|low",
+  "notSeen": ["skills you could not actually assess from this footage"]
+}`;
+
+/* Honesty rules matter more than polish here: a confident-sounding note about
+   something the model cannot see teaches a student the wrong lesson. */
+const HONESTY_RULES = `Rules:
+- 5-9 feedback items, at least one positive.
+- Only describe what is genuinely visible. Never invent a specific error you cannot see.
+- Score a skill only if you actually observed it; if a skill barely appears, give it a mid-range score and list it in "notSeen".
+- Be honest about the footage: set "confidence" to low if the angle, distance or quality make real assessment hard.
+- Scores must be realistic for a school player — rarely above 75.
+- Write for a high-school player: concrete, encouraging, no jargon without explanation.`;
+
+/* Analysis from still frames (any provider). */
+async function analyzeGameplay(frames, focus) {
+  const prompt = `You are an expert badminton coach reviewing gameplay footage. The images are chronological still frames sampled from a short clip — they were chosen at moments of high movement, so they should show shots and rallies.
+
+Frame timestamps:
+${frames.map((f, i) => `Frame ${i + 1}: ${fmtTime(f.time)}`).join('\n')}
+${FOCUS_MAP[focus] || FOCUS_MAP.all}
+
+IMPORTANT: these are still images, so you cannot see timing, speed, or shuttle flight. Comment on what a still can show — body position, racket preparation, contact point, stance, court position, balance — and do not claim to judge timing or rhythm.
+
+${OUTPUT_SHAPE}
+${HONESTY_RULES}
+- Every timestamp must be one of the frame timestamps listed above.`;
   const text = await callAI([...frameParts(frames), { text: prompt }]);
   const parsed = parseJsonReply(text);
   if (!parsed.feedback || !parsed.scores) throw new Error('AI reply missing expected fields.');
-  return parsed;
+  return { ...parsed, method: 'frames' };
+}
+
+/* Analysis from the actual video (Gemini) — the model sees motion, so it can
+   judge timing, footwork sequences and shot preparation properly. */
+async function analyzeGameplayVideo(blob, focus, durationSec) {
+  const videoB64 = await blobToBase64(blob);
+  const prompt = `You are an expert badminton coach reviewing a player's gameplay video (${durationSec ? Math.round(durationSec) + ' seconds' : 'about a minute'} long).
+${FOCUS_MAP[focus] || FOCUS_MAP.all}
+
+Because you can see the video move, assess what stills cannot show: footwork sequence and recovery to base, split-step timing, swing mechanics through contact, shot selection during rallies, and how the player moves between shots.
+
+${OUTPUT_SHAPE}
+${HONESTY_RULES}
+- Timestamps must be real moments in the video, formatted M:SS, and within its duration.`;
+  const text = await callAI([{ videoB64, mimeType: blob.type || 'video/webm' }, { text: prompt }], 3000);
+  const parsed = parseJsonReply(text);
+  if (!parsed.feedback || !parsed.scores) throw new Error('AI reply missing expected fields.');
+  return { ...parsed, method: 'video' };
+}
+
+/* Single entry point: use the best analysis this provider and clip allow. */
+async function runGameplayAnalysis({ videoEl, blob, focus, onStatus = () => {} }) {
+  if (canSendNativeVideo(blob)) {
+    onStatus('Uploading the video for full-motion analysis…');
+    try {
+      return await analyzeGameplayVideo(blob, focus, videoEl?.duration);
+    } catch (err) {
+      // payload rejected / too large / model can't take video — fall back cleanly
+      onStatus('Video analysis unavailable, falling back to key frames…');
+      console.warn('Native video analysis failed, using frames instead:', err);
+    }
+  }
+  onStatus('Finding the moments with the most action…');
+  const { frames, mode } = await extractKeyFrames(videoEl, 8, pct => onStatus(`Scanning the clip for action… ${pct}%`));
+  onStatus(`Sending ${frames.length} key moments to the AI coach…`);
+  const result = await analyzeGameplay(frames, focus);
+  return { ...result, sampling: mode };
 }
 
 /* Side-by-side comparison: player frames vs pro frames.

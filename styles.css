@@ -813,6 +813,61 @@ details > :last-child { margin-bottom: 14px; }
 
 hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 
+/* ================= demo banner + guided tour ================= */
+
+.demo-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 7px 16px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-bottom: 1px solid var(--warn-line);
+  font-size: 13px;
+  font-weight: 600;
+}
+body.has-demo #topnav { top: 38px; }
+body.has-demo { padding-top: 38px; }
+
+.tour-panel {
+  position: fixed;
+  z-index: 45;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+.tour-progress { height: 3px; background: var(--line); }
+.tour-progress span { display: block; height: 100%; background: var(--accent); transition: width 200ms; }
+.tour-body { padding: 14px 18px 4px; }
+.tour-step {
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.tour-body h3 { margin: 0 0 5px; font-size: 17px; }
+.tour-body p { font-size: 14px; color: var(--ink-2); margin: 0; }
+.tour-actions { display: flex; align-items: center; gap: 8px; padding: 12px 18px 14px; }
+
+/* keep the tour panel clear of the mobile tab bar */
+@media (max-width: 879px) {
+  .tour-panel { bottom: calc(78px + env(safe-area-inset-bottom)); }
+  body.has-tour #toast { display: none; }
+}
+
 /* ================= live scorer ================= */
 
 .scorer { max-width: 760px; margin: 0 auto; }

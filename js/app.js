@@ -87,6 +87,7 @@ function route() {
   VIEW.innerHTML = '';
   (ROUTES[name] || renderRoot)(arg, params);
   markNav(name || 'home');
+  renderTourChrome();
   window.scrollTo(0, 0);
 }
 
@@ -198,6 +199,169 @@ function setTheme(name) {
   applyTheme(name);
   saveState();
   toast('Theme: ' + THEME_LABELS[state.settings.theme]);
+}
+
+/* ---------- guided tour ----------
+   Runs on demo data so a brand-new coach or player can see a working team
+   before they have one. Exiting puts their real (usually empty) data back. */
+
+const TOUR_KEY = 'siq_tour';
+const TOUR_MOUNT = document.getElementById('tour');
+
+const TOURS = {
+  coach: {
+    label: 'Coach tour',
+    steps: [
+      { hash: '#/', title: 'Your dashboard', body: 'The scoreboard up top is the season at a glance. Below it you get streak and slump alerts, who\'s in form, and the latest results — so you walk into practice already knowing what needs attention.' },
+      { hash: '#/players', title: 'The roster', body: 'Everyone on your team. Add several at once by pasting "Alex, Ben, Chris". The Available column is the important one — mark someone injured or away and the app stops putting them in lineups.' },
+      { hash: '#/score', title: 'Score a match courtside', body: 'Pick a player, tap the two big numbers as points happen. It knows the real rules — first to 21, win by 2, capped at 30, best of three — and saves the finished match straight to the log. This is the fastest way to keep records during a meet.' },
+      { hash: '#/matches', title: 'Match history', body: 'Every result, filterable by player. The optional 1–5 ratings you give after a match are what power the skill radars, position fit and depth chart — a few seconds each time pays off all season.' },
+      { hash: '#/ladder', title: 'The challenge ladder', body: 'Your internal pecking order. Record a challenge and if the lower-ranked player wins, they take that spot. Both players get the match on their record automatically. Print it for the gym wall.' },
+      { hash: '#/rosters', title: 'Build a lineup', body: 'Hit Auto-suggest and it fills the lineup using position fit, win rate and which doubles pairs actually win together — and it never picks anyone marked injured or away. Adjust anything, then print or copy it.' },
+      { hash: '#/insights', title: 'Team insights', body: 'Your depth chart per role, the team\'s weakest skills with a drill for each (printable as a practice plan), records against every opponent, and doubles chemistry.' },
+      { hash: '#/tryouts', title: 'Tryout scouting', body: 'Add prospects and tap 1–5 across seven drills while they play. The board re-ranks live, so by the end of the session you already know your cuts. Promote keepers straight to the roster.' },
+      { hash: '#/analyze', title: 'AI video analysis', body: 'Record up to a minute of play and get scored feedback with timestamps you can tap to jump to that moment. Needs a free API key (Settings) — everything else in the app works without one.' },
+    ],
+  },
+  student: {
+    label: 'Player tour',
+    steps: [
+      { hash: '#/', title: 'Your home screen', body: 'Your recent form, your skill radar, what to work on next, and the latest AI feedback on your play — all in one place.' },
+      { hash: '#/analyze', title: 'Film and get coached', body: 'Record up to a minute of play, and the AI gives you scores plus specific coaching notes. Tap any note to jump to that exact moment in your clip.' },
+      { hash: '#/compare', title: 'Compare with a pro', body: 'Pick a pro who plays your style, load a clip of them next to yours, and watch both in slow motion — or let the AI spell out the differences and how to close them.' },
+      { hash: '#/drills', title: 'Drills that target your gaps', body: 'The whole library is here, and the top of the page recommends the drills matched to your two weakest skills, each with a target to hit.' },
+      { hash: '#/ladder', title: 'Where you stand', body: 'The team ladder, with your spot highlighted. Beat someone above you in a challenge and you take their place — ask your coach to record it.' },
+    ],
+  },
+};
+
+function tourState() {
+  try { return JSON.parse(sessionGet(TOUR_KEY) || 'null'); } catch { return null; }
+}
+
+function beginTour(kind) {
+  const prevRole = getRole();
+  const prevStudent = getStudentId();
+  startDemo();
+  if (kind === 'student') { setRole('student'); setStudentId('p1'); }
+  else setRole('coach');
+  sessionSet(TOUR_KEY, JSON.stringify({ kind, step: 0, prevRole, prevStudent }));
+  location.hash = TOURS[kind].steps[0].hash;
+  route();
+}
+
+function moveTour(delta) {
+  const t = tourState();
+  if (!t) return;
+  const steps = TOURS[t.kind].steps;
+  const next = t.step + delta;
+  if (next < 0 || next >= steps.length) return;
+  t.step = next;
+  sessionSet(TOUR_KEY, JSON.stringify(t));
+  location.hash = steps[next].hash;
+  route();
+}
+
+/* `known` carries the tour state when the caller already cleared it (the finish
+   card), so the role the user had before the tour is still restored. */
+function finishTour(known) {
+  const t = known || tourState();
+  sessionRemove(TOUR_KEY);
+  endDemo();
+  if (t) {
+    setRole(t.prevRole || null);
+    if (t.prevStudent) setStudentId(t.prevStudent);
+    else if (t.prevRole !== 'student') setStudentId(null);
+  }
+  location.hash = '#/';
+  route();
+  toast('Sample team cleared — the app is yours now');
+}
+
+function exitDemo() {
+  let prev = null;
+  try { prev = JSON.parse(sessionGet('siq_tour_prev') || 'null'); } catch { prev = null; }
+  sessionRemove('siq_tour_prev');
+  finishTour(tourState() || prev);
+}
+
+function renderTourChrome() {
+  const t = tourState();
+  const inDemo = demoActive();
+  if (!inDemo && !t) { TOUR_MOUNT.innerHTML = ''; document.body.classList.remove('has-tour', 'has-demo'); return; }
+  document.body.classList.toggle('has-demo', inDemo);
+  document.body.classList.toggle('has-tour', !!t);
+
+  const banner = inDemo
+    ? `<div class="demo-banner">
+         <span><b>Demo mode</b> — sample team, nothing here is your real data</span>
+         <button class="btn btn-sm" id="demo-exit">Exit demo</button>
+       </div>`
+    : '';
+
+  let panel = '';
+  if (t) {
+    const steps = TOURS[t.kind].steps;
+    const s = steps[t.step];
+    const last = t.step === steps.length - 1;
+    panel = `
+      <div class="tour-panel" role="dialog" aria-label="Guided tour">
+        <div class="tour-progress"><span style="width:${((t.step + 1) / steps.length) * 100}%"></span></div>
+        <div class="tour-body">
+          <div class="tour-step">Step ${t.step + 1} of ${steps.length} · ${esc(TOURS[t.kind].label)}</div>
+          <h3>${esc(s.title)}</h3>
+          <p>${esc(s.body)}</p>
+        </div>
+        <div class="tour-actions">
+          <button class="btn btn-sm" id="tour-skip">Skip tour</button>
+          <span style="flex:1"></span>
+          <button class="btn btn-sm" id="tour-back" ${t.step === 0 ? 'disabled' : ''}>Back</button>
+          <button class="btn btn-primary btn-sm" id="tour-next">${last ? 'Finish' : 'Next'}</button>
+        </div>
+      </div>`;
+  }
+
+  TOUR_MOUNT.innerHTML = banner + panel;
+  document.getElementById('demo-exit')?.addEventListener('click', () => {
+    if (!confirm('Clear the sample team and go back to your own data?')) return;
+    exitDemo();
+  });
+  document.getElementById('tour-back')?.addEventListener('click', () => moveTour(-1));
+  document.getElementById('tour-skip')?.addEventListener('click', () => finishTour());
+  document.getElementById('tour-next')?.addEventListener('click', () => {
+    const cur = tourState();
+    const steps = TOURS[cur.kind].steps;
+    if (cur.step < steps.length - 1) moveTour(1);
+    else renderTourFinish(cur);
+  });
+}
+
+function renderTourFinish(t) {
+  const kind = t.kind;
+  sessionRemove(TOUR_KEY);
+  document.body.classList.remove('has-tour');
+  TOUR_MOUNT.innerHTML = `
+    <div class="tour-panel">
+      <div class="tour-body">
+        <div class="tour-step">Tour complete</div>
+        <h3>That's the whole app</h3>
+        <p>${kind === 'coach'
+          ? 'Clear the sample team whenever you\'re ready and start adding your own players — or keep poking around first.'
+          : 'Clear the sample data whenever you\'re ready. Your coach\'s real team lives on their device.'}</p>
+      </div>
+      <div class="tour-actions">
+        <button class="btn btn-sm" id="tour-keep">Keep exploring</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-primary btn-sm" id="tour-clear">Clear sample data</button>
+      </div>
+    </div>`;
+  document.getElementById('tour-keep').addEventListener('click', () => {
+    // stay in demo, but remember who they were so "Exit demo" can restore it
+    sessionSet('siq_tour_prev', JSON.stringify({ prevRole: t.prevRole, prevStudent: t.prevStudent }));
+    TOUR_MOUNT.innerHTML = '';
+    renderTourChrome();
+  });
+  document.getElementById('tour-clear').addEventListener('click', () => finishTour(t));
 }
 
 /* ---------- shared UI builders ---------- */
@@ -477,14 +641,14 @@ function renderDashboard() {
     VIEW.innerHTML = `
     <div class="empty" style="margin-top:6vh">
       <h3>Welcome, coach</h3>
-      <p>No team on this device yet. Add players, run a tryout, or load sample data to explore every screen.</p>
+      <p>Nothing here yet — this is your team's device. New to ShuttleIQ? Take the two-minute tour: it loads a sample team so you can see every screen working, then clears it when you're done.</p>
       <div class="btn-row center">
-        <a class="btn btn-primary" href="#/players">Add players</a>
-        <a class="btn" href="#/tryouts">Start tryouts</a>
-        <button class="btn" id="dash-sample">Load sample data</button>
+        <button class="btn btn-primary btn-lg" id="dash-tour">Take the tour</button>
+        <a class="btn btn-lg" href="#/players">Add players</a>
       </div>
+      <p class="small muted" style="margin-top:14px">Already know your way around? <a href="#/players">Add your roster</a> or <a href="#/tryouts">start tryouts</a>.</p>
     </div>`;
-    document.getElementById('dash-sample').addEventListener('click', () => { loadSampleData(); route(); toast('Sample team loaded'); });
+    document.getElementById('dash-tour').addEventListener('click', () => beginTour('coach'));
     return;
   }
 
@@ -614,7 +778,12 @@ function renderStudentDashboard() {
       <div class="card"><h3>Analyze my game</h3><p class="muted small">Record 60 seconds and get coached.</p><a class="btn btn-sm" href="#/analyze">Open →</a></div>
       <div class="card"><h3>Compare with a pro</h3><p class="muted small">Side-by-side with the greats.</p><a class="btn btn-sm" href="#/compare">Open →</a></div>
       <div class="card"><h3>Drill library</h3><p class="muted small">Standard drills by skill.</p><a class="btn btn-sm" href="#/drills">Open →</a></div>
+    </div>
+    <div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <span style="flex:1;min-width:240px"><b>First time here?</b> Take a two-minute tour on a sample team to see what the app does.</span>
+      <button class="btn btn-primary btn-sm" data-tour="student">Take the tour</button>
     </div>`;
+    VIEW.querySelectorAll('[data-tour]').forEach(b => b.addEventListener('click', () => beginTour(b.dataset.tour)));
     document.getElementById('me-go')?.addEventListener('click', () => {
       setStudentId(document.getElementById('me-pick').value);
       route();
@@ -1700,16 +1869,19 @@ function renderAnalyze(_, params) {
       if (demo) {
         parsed = demoAnalysis(document.getElementById('an-focus').value);
       } else {
-        statusEl.textContent = 'Extracting frames…';
-        const frames = await extractFrames(videoEl, 8);
-        statusEl.textContent = `Sending ${frames.length} frames to the AI coach…`;
-        parsed = await analyzeGameplay(frames, document.getElementById('an-focus').value);
+        parsed = await runGameplayAnalysis({
+          videoEl,
+          blob: currentBlob,
+          focus: document.getElementById('an-focus').value,
+          onStatus: msg => { statusEl.textContent = msg; },
+        });
         const playerId = document.getElementById('an-player').value || null;
         state.sessions.push({
           id: uid(), playerId, date: new Date().toISOString(),
           label: document.getElementById('an-label').value.trim() || `Session ${state.sessions.length + 1}`,
           focus: document.getElementById('an-focus').value,
           scores: parsed.scores, feedback: parsed.feedback, clipId: currentClipId,
+          method: parsed.method, confidence: parsed.confidence,
         });
         saveState();
       }
@@ -1771,9 +1943,20 @@ function renderAnalyze(_, params) {
 }
 
 function renderAnalysisResults(parsed) {
+  const methodNote = parsed.demo ? '' : parsed.method === 'video'
+    ? 'Analyzed the <b>full video</b> — motion, footwork and timing included.'
+    : `Analyzed <b>8 key moments</b>${parsed.sampling === 'motion' ? ' picked from the busiest parts of the clip' : ''}. Still frames can\'t show timing or shuttle speed.`;
+  const conf = parsed.confidence && parsed.confidence !== 'high'
+    ? ` The coach rated its own confidence <b>${esc(parsed.confidence)}</b> for this footage.`
+    : '';
+  const notSeen = Array.isArray(parsed.notSeen) && parsed.notSeen.length
+    ? `<p class="small muted">Couldn't assess from this clip: ${parsed.notSeen.map(esc).join(', ')}. Film those situations to get feedback on them.</p>`
+    : '';
   return `
   <div class="card">
     ${parsed.demo ? '<div class="notice">This is a <b>sample</b> analysis so you can see the format — it was not generated from your video and is not saved. Add an API key in Settings for the real thing.</div>' : ''}
+    ${methodNote ? `<p class="small muted">${methodNote}${conf}</p>` : ''}
+    ${notSeen}
     <div class="card-title">Scores</div>
     ${skillBars(parsed.scores)}
     <div class="card-title" style="margin-top:16px">Feedback <span class="muted" style="text-transform:none;letter-spacing:0">— click a card to jump to that moment</span></div>
@@ -2362,6 +2545,11 @@ function renderGuide() {
   VIEW.innerHTML = `
   <div class="page-head"><h1>How to use ShuttleIQ</h1><p class="muted">Everything stays on your device — no accounts, no server</p></div>
 
+  <div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <span style="flex:1;min-width:240px"><b>Prefer to be shown?</b> The guided tour loads a sample team, walks you through every screen, and clears it when you're done.</span>
+    <button class="btn btn-primary btn-sm" data-tour="${coach ? 'coach' : 'student'}">Take the ${coach ? 'coach' : 'player'} tour</button>
+  </div>
+
   <div class="grid2">
     <div class="card">
       <div class="card-title">For coaches — first 10 minutes</div>
@@ -2415,6 +2603,11 @@ function renderGuide() {
       <p class="small muted"><b>The coach passcode is a soft gate</b> — it keeps players out of coach tools on a shared tablet, not a determined person with developer tools.</p>
     </div>
   </div>`;
+
+  VIEW.querySelectorAll('[data-tour]').forEach(b => b.addEventListener('click', () => {
+    if (demoActive()) { toast('Already in demo mode'); return; }
+    beginTour(b.dataset.tour);
+  }));
 }
 
 /* ---------- settings (coach) ---------- */
@@ -2431,6 +2624,16 @@ function renderSettings() {
     <div class="card-title">Team</div>
     <label style="max-width:300px">Team name<input type="text" id="set-team" value="${esc(s.teamName)}"></label>
     <div class="btn-row"><button class="btn btn-sm" id="set-team-save">Save</button></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Guided tour</div>
+    <p class="small muted">Walks through every screen using a sample team, then clears it. Your own data is set aside while the demo runs and restored when you exit.</p>
+    <div class="btn-row">
+      <button class="btn btn-sm" data-tour="coach">Coach tour</button>
+      <button class="btn btn-sm" data-tour="student">Player tour</button>
+      <a class="btn btn-sm" href="#/guide">Written guide</a>
+    </div>
   </div>
 
   <div class="card">
@@ -2452,6 +2655,7 @@ function renderSettings() {
       <button class="btn btn-sm" data-ai-preset="openrouter">OpenRouter</button>
       <button class="btn btn-sm" data-ai-preset="groq">Groq</button>
     </div>
+    <p class="small" style="color:var(--link)"><b>Gemini is the one to pick.</b> It's the only free option that reads your actual video — it sees footwork and timing, not just frozen poses. The others analyse still frames, which is useful but blind to movement.</p>
     <div class="form-grid">
       <label>Provider<select id="ai-provider">
         ${Object.entries(AI_PROVIDERS).map(([k, v]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${v.label}</option>`).join('')}
@@ -2479,7 +2683,6 @@ function renderSettings() {
       <button class="btn btn-sm" id="data-csv">Export matches (CSV)</button>
       <button class="btn btn-sm" id="data-import">Import backup…</button>
       <input type="file" id="data-file" accept="application/json" style="display:none">
-      <button class="btn btn-sm" id="data-sample">Load sample data</button>
       <button class="btn btn-danger btn-sm" id="data-reset">Reset everything…</button>
     </div>
     <p class="small muted" id="data-usage"></p>
@@ -2590,12 +2793,10 @@ function renderSettings() {
       route();
     });
   });
-  document.getElementById('data-sample').addEventListener('click', () => {
-    if (state.players.length && !confirm('This replaces current players/matches with sample data. Continue?')) return;
-    loadSampleData();
-    toast('Sample data loaded');
-    route();
-  });
+  VIEW.querySelectorAll('[data-tour]').forEach(b => b.addEventListener('click', () => {
+    if (demoActive()) { toast('Already in demo mode'); return; }
+    beginTour(b.dataset.tour);
+  }));
   document.getElementById('data-reset').addEventListener('click', () => {
     if (!confirm('Delete ALL players, matches, analyses, rosters, and settings on this device?')) return;
     if (!confirm('Really sure? There is no undo.')) return;

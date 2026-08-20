@@ -427,7 +427,48 @@ function resetData() {
   saveState();
 }
 
-/* ---------- sample data so every screen can be explored before the season ---------- */
+/* ---------- demo mode ----------
+   The tour runs on sample data, but a coach may already have a real season
+   logged. So: snapshot the real state to a separate key, swap in the sample
+   team, and put it all back on exit. The snapshot lives in localStorage (not
+   session) so closing the tab mid-tour can never strand real data. */
+
+const DEMO_FLAG = 'shuttleiq_demo';
+const DEMO_BACKUP = 'shuttleiq_predemo';
+
+function demoActive() {
+  try { return localStorage.getItem(DEMO_FLAG) === '1'; } catch { return false; }
+}
+
+function startDemo() {
+  if (!demoActive()) {
+    try {
+      localStorage.setItem(DEMO_BACKUP, JSON.stringify(state));
+      localStorage.setItem(DEMO_FLAG, '1');
+    } catch { /* storage blocked — demo still runs, just can't restore */ }
+  }
+  loadSampleData();
+}
+
+/* Restore the real team. Settings (theme, API key, passcode) are deliberately
+   kept as they are now, so anything changed during the tour sticks. */
+function endDemo() {
+  const keepSettings = { ...state.settings };
+  let restored = null;
+  try {
+    const raw = localStorage.getItem(DEMO_BACKUP);
+    if (raw) restored = mergeState(JSON.parse(raw));
+  } catch { restored = null; }
+  state = restored || structuredClone(DEFAULT_STATE);
+  state.settings = keepSettings;
+  try {
+    localStorage.removeItem(DEMO_BACKUP);
+    localStorage.removeItem(DEMO_FLAG);
+  } catch { /* nothing to clean up */ }
+  saveState();
+}
+
+/* ---------- sample data (demo/tour only) ---------- */
 
 function loadSampleData() {
   const names = [
