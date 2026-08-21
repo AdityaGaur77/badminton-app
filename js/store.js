@@ -15,6 +15,7 @@ const DEFAULT_STATE = {
     recoveryHash: '',      // hash of the one-time recovery code (resets a forgotten passcode)
     theme: 'midnight',     // 'midnight' | 'court' | 'clean'
     lastBackup: '',        // ISO date of the last exported backup, for the reminder
+    aiUsage: null,         // {date, count} — today's AI request tally vs the free-tier cap
   },
   players: [],   // {id, name, year, hand, status:'roster'|'tryout'|'cut', availability, tryoutScores, aiNote, notes, createdAt}
   matches: [],   // {id, playerId, partnerId, date, opponent, discipline, result, score, ratings, notes, context}
@@ -70,6 +71,7 @@ function mergeState(parsed) {
       recoveryHash: str(s.recoveryHash),
       theme: ['midnight', 'court', 'clean'].includes(s.theme) ? s.theme : base.settings.theme,
       lastBackup: str(s.lastBackup),
+      aiUsage: (s.aiUsage && typeof s.aiUsage === 'object' && typeof s.aiUsage.count === 'number') ? { date: str(s.aiUsage.date), count: s.aiUsage.count } : null,
     },
     players: Array.isArray(parsed.players) ? parsed.players : [],
     matches: Array.isArray(parsed.matches) ? parsed.matches : [],

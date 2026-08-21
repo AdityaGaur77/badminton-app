@@ -13,10 +13,13 @@ const AI_PROVIDERS = {
     help: 'Get a key at console.anthropic.com. Calls go straight from this browser to api.anthropic.com.',
   },
   gemini: {
+    // "-latest" aliases track whatever the current model is. Pinned versions
+    // get retired for new users (2.5-flash did exactly that), which would break
+    // AI features for anyone setting the app up later. Aliases survive that.
     label: 'Google (Gemini)',
-    defaultModel: 'gemini-2.5-flash',
-    models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-    help: 'Get a key at aistudio.google.com (free tier available). Calls go straight to generativelanguage.googleapis.com.',
+    defaultModel: 'gemini-flash-latest',
+    models: ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-pro-latest'],
+    help: 'Get a key at aistudio.google.com (free tier available). Calls go straight to generativelanguage.googleapis.com. Reads your actual video, not just still frames.',
   },
   openai: {
     label: 'OpenAI-compatible',
@@ -206,18 +209,80 @@ function fmtTime(seconds) {
 
 /* ---------- provider adapters ---------- */
 
-async function callAI(parts, maxTokens = 3000) {
+/* Free tiers return "model overloaded" (503) fairly often, and rate limits
+   (429) come in bursts. Both clear on their own, so retry a couple of times
+   with backoff rather than making the user press the button again. */
+const RETRYABLE = /\b(503|429|overload|high demand|unavailable|rate limit|try again)\b/i;
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+/* Local tally so a coach can see how much of the day's free allowance is gone
+   before a player is left waiting mid-practice. */
+function noteAiCall() {
+  const today = todayISO();
+  const u = state.settings.aiUsage;
+  state.settings.aiUsage = (u && u.date === today) ? { date: today, count: u.count + 1 } : { date: today, count: 1 };
+  saveState();
+}
+
+function aiCallsToday() {
+  const u = state.settings.aiUsage;
+  return u && u.date === todayISO() ? u.count : 0;
+}
+
+async function callAI(parts, maxTokens = 3000, { onRetry } = {}) {
   const cfg = aiConfig();
   if (!cfg.apiKey) throw new Error('No API key set. Add one in Settings.');
-  if (cfg.provider === 'anthropic') return callAnthropic(cfg, parts, maxTokens);
-  if (cfg.provider === 'gemini') return callGemini(cfg, parts, maxTokens);
-  return callOpenAI(cfg, parts, maxTokens);
+  noteAiCall();
+  const send = () => {
+    if (cfg.provider === 'anthropic') return callAnthropic(cfg, parts, maxTokens);
+    if (cfg.provider === 'gemini') return callGemini(cfg, parts, maxTokens);
+    return callOpenAI(cfg, parts, maxTokens);
+  };
+  // Observed in testing: free-tier Gemini can 503 several times in a row for a
+  // minute or two, then clear. These waits cover that without stalling forever.
+  const backoff = [2000, 5000, 10000];
+  let lastErr;
+  for (let attempt = 0; attempt <= backoff.length; attempt++) {
+    try {
+      return await send();
+    } catch (err) {
+      lastErr = err;
+      if (attempt === backoff.length || !RETRYABLE.test(err.message || '')) {
+        if (RETRYABLE.test(err.message || '')) {
+          err.message += ' Tried 4 times — wait a minute, or switch model in Settings.';
+        }
+        throw err;
+      }
+      const waitMs = backoff[attempt];
+      if (onRetry) onRetry(attempt + 1, waitMs, backoff.length);
+      await sleep(waitMs);
+    }
+  }
+  throw lastErr;
 }
 
 async function readJsonResponse(response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const msg = payload?.error?.message || payload?.error?.status || `Request failed (${response.status})`;
+    let msg = payload?.error?.message || payload?.error?.status || `Request failed (${response.status})`;
+    // Providers retire models; make that recoverable instead of cryptic.
+    if (response.status === 404 && /model/i.test(msg)) {
+      msg += ' — pick a different model in Settings.';
+    } else if (response.status === 429) {
+      // Gemini's free tier is capped per day PER MODEL, so switching model in
+      // Settings genuinely buys a fresh allowance — worth telling the user.
+      const perDay = /PerDay|per day/i.test(JSON.stringify(payload?.error?.details || ''));
+      msg = perDay
+        ? 'Daily free-tier limit reached for this model (Gemini allows about 20 AI requests per day per model). Switch to another model in Settings for a fresh allowance, or try again tomorrow.'
+        : 'Rate limit reached. Wait a minute and try again, or switch model in Settings. (' + msg + ')';
+    } else if (response.status === 401 || response.status === 403) {
+      msg = 'The API key was rejected. Check it in Settings. (' + msg + ')';
+    } else if (response.status === 503) {
+      msg = 'The model is busy right now — this usually clears in a moment. (' + msg + ')';
+    }
     throw new Error(msg);
   }
   return payload;
@@ -369,7 +434,7 @@ ${HONESTY_RULES}
 
 /* Analysis from the actual video (Gemini) — the model sees motion, so it can
    judge timing, footwork sequences and shot preparation properly. */
-async function analyzeGameplayVideo(blob, focus, durationSec) {
+async function analyzeGameplayVideo(blob, focus, durationSec, onStatus) {
   const videoB64 = await blobToBase64(blob);
   const prompt = `You are an expert badminton coach reviewing a player's gameplay video (${durationSec ? Math.round(durationSec) + ' seconds' : 'about a minute'} long).
 ${FOCUS_MAP[focus] || FOCUS_MAP.all}
@@ -379,7 +444,9 @@ Because you can see the video move, assess what stills cannot show: footwork seq
 ${OUTPUT_SHAPE}
 ${HONESTY_RULES}
 - Timestamps must be real moments in the video, formatted M:SS, and within its duration.`;
-  const text = await callAI([{ videoB64, mimeType: blob.type || 'video/webm' }, { text: prompt }], 3000);
+  const text = await callAI([{ videoB64, mimeType: blob.type || 'video/webm' }, { text: prompt }], 3000, {
+    onRetry: (n, ms, total) => onStatus?.(`The model is busy — retrying (${n}/${total}) in ${Math.round(ms / 1000)}s…`),
+  });
   const parsed = parseJsonReply(text);
   if (!parsed.feedback || !parsed.scores) throw new Error('AI reply missing expected fields.');
   return { ...parsed, method: 'video' };
@@ -390,7 +457,7 @@ async function runGameplayAnalysis({ videoEl, blob, focus, onStatus = () => {} }
   if (canSendNativeVideo(blob)) {
     onStatus('Uploading the video for full-motion analysis…');
     try {
-      return await analyzeGameplayVideo(blob, focus, videoEl?.duration);
+      return await analyzeGameplayVideo(blob, focus, videoEl?.duration, onStatus);
     } catch (err) {
       // payload rejected / too large / model can't take video — fall back cleanly
       onStatus('Video analysis unavailable, falling back to key frames…');
