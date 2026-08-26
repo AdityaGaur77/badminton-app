@@ -9,7 +9,8 @@ window.SIQ_DRILLS = [
     level: 'Beginner',
     minutes: 10,
     description: 'Stand at court center. Coach calls directions (front-left, front-right, back-left, back-right). Shuffle to each corner with proper split step, return to center, reset stance. Focus on quick small steps and explosive push-off from center.',
-    target: '3 rounds of 60 seconds at steady pace, moving smoothly between all four corners.'
+    target: '3 rounds of 60 seconds at steady pace, moving smoothly between all four corners.',
+    youtubeQuery: 'badminton shadow footwork four corner drill'
   },
   {
     id: 'fw2',
@@ -18,7 +19,8 @@ window.SIQ_DRILLS = [
     level: 'Intermediate',
     minutes: 12,
     description: 'Partner feeds shuttles to six zones (front-left, front-center, front-right, back-left, back-center, back-right). You move to each zone, play a return stroke, and recover to center. Gradually increase feed speed.',
-    target: 'Complete 40 shuttles with proper court coverage and return to neutral in under 15 seconds per round.'
+    target: 'Complete 40 shuttles with proper court coverage and return to neutral in under 15 seconds per round.',
+    youtubeQuery: 'badminton six corner multi shuttle footwork drill'
   },
   {
     id: 'fw3',
@@ -27,7 +29,8 @@ window.SIQ_DRILLS = [
     level: 'Advanced',
     minutes: 15,
     description: 'Partner randomly feeds shuttles across the court in unpredictable patterns. React explosively, hit the shuttle, and recover to center with explosive footwork. Mix attacking and defensive positions.',
-    target: 'Execute 50 rapid shuttles with zero late arrivals and controlled recovery footwork.'
+    target: 'Execute 50 rapid shuttles with zero late arrivals and controlled recovery footwork.',
+    youtubeQuery: 'badminton random multi shuttle footwork drill advanced'
   },
   // Smash drills
   {
@@ -37,7 +40,8 @@ window.SIQ_DRILLS = [
     level: 'Beginner',
     minutes: 10,
     description: 'Partner feeds high shuttles to your racket-side. Step back, position chin on front shoulder, and smash deep to baseline. Focus on height and power, not accuracy yet.',
-    target: '20 of 25 smashes land past the service line with full extension and follow-through.'
+    target: '20 of 25 smashes land past the service line with full extension and follow-through.',
+    youtubeQuery: 'badminton smash technique for beginners drill'
   },
   {
     id: 'sm2',
@@ -46,7 +50,8 @@ window.SIQ_DRILLS = [
     level: 'Intermediate',
     minutes: 12,
     description: 'Partner feeds high shuttles from mid-court. Attack at a 45-degree angle to the sideline (crosscourt and sideline targets marked). Use weight transfer and wrist snap for both power and placement.',
-    target: '16 of 20 smashes land in the target zone on both crosscourt and sideline angles.'
+    target: '16 of 20 smashes land in the target zone on both crosscourt and sideline angles.',
+    youtubeQuery: 'badminton half court smash drill placement'
   },
   {
     id: 'sm3',
@@ -55,7 +60,8 @@ window.SIQ_DRILLS = [
     level: 'Advanced',
     minutes: 15,
     description: 'Partner alternates between high feeds (you smash deep) and drop feeds (you adjust mid-stroke to punch a fast shallow smash). Switch rapidly between power and control without resetting footwork.',
-    target: '12 successful transitions (6 deep, 6 shallow) in sequence with no mistiming or footwork break.'
+    target: '12 successful transitions (6 deep, 6 shallow) in sequence with no mistiming or footwork break.',
+    youtubeQuery: 'badminton stick smash and slice smash drill'
   },
   // Serve drills
   {
@@ -65,7 +71,8 @@ window.SIQ_DRILLS = [
     level: 'Beginner',
     minutes: 10,
     description: 'Mark a line 2 feet inside the service box (tape or chalk). Serve underhand, keeping shuttle below net tape. Land serves consistently in that zone on both sides.',
-    target: '40 of 50 serves land in the low target zone with net clearance on both sides of court.'
+    target: '40 of 50 serves land in the low target zone with net clearance on both sides of court.',
+    youtubeQuery: 'badminton low serve technique doubles drill'
   },
   {
     id: 'sv2',
@@ -74,7 +81,8 @@ window.SIQ_DRILLS = [
     level: 'Intermediate',
     minutes: 12,
     description: 'Serve high serves to both service boxes. Focus on landing near baseline without going out; vary depth. Work both wide and straight serves with consistent height and trajectory.',
-    target: '35 of 50 high serves land within 18 inches of baseline on legal serve targets.'
+    target: '35 of 50 high serves land within 18 inches of baseline on legal serve targets.',
+    youtubeQuery: 'badminton high serve technique singles drill'
   },
   {
     id: 'sv3',
@@ -83,7 +91,8 @@ window.SIQ_DRILLS = [
     level: 'Advanced',
     minutes: 15,
     description: 'Alternate every 3 serves between low-short, low-deep, high-straight, and high-wide. Opponent waiting to return at net; focus on disguise and accuracy under match pressure.',
-    target: '50 consecutive serves with at least 80% landing in legal zones across all four serve types.'
+    target: '50 consecutive serves with at least 80% landing in legal zones across all four serve types.',
+    youtubeQuery: 'badminton flick serve and serve variation drill'
   },
   // Defense drills
   {
@@ -93,7 +102,8 @@ window.SIQ_DRILLS = [
     level: 'Beginner',
     minutes: 12,
     description: 'Two attackers feed smashes from mid-court; you defend at baseline. Shuttle goes back and forth; focus on getting behind the shuttle and clearing high. Rotate after 3 exchanges.',
-    target: 'Defend 3 rounds of 8 exchanges each, clearing at least 90% of shots.'
+    target: 'Defend 3 rounds of 8 exchanges each, clearing at least 90% of shots.',
+    youtubeQuery: 'badminton 2 vs 1 defence drill'
   },
   {
     id: 'df2',
@@ -102,7 +112,8 @@ window.SIQ_DRILLS = [
     level: 'Intermediate',
     minutes: 13,
     description: 'Partner feeds rapid mid-court drives from one side. Shuffle sideways using small explosive steps, get racket up early, and block returns cross-court. Maintain court position.',
-    target: 'Block 40 consecutive drives with proper footwork, no reaching or lunging.'
+    target: 'Block 40 consecutive drives with proper footwork, no reaching or lunging.',
+    youtubeQuery: 'badminton defence block technique drill'
   },
   {
     id: 'df3',
@@ -111,7 +122,8 @@ window.SIQ_DRILLS = [
     level: 'Advanced',
     minutes: 15,
     description: 'Partner attacks; you defend and block. On second shuttle, switch to attacking stroke (clear or drop). Repeat 5-shot sequence. Build match-realistic transition footwork.',
-    target: 'Complete 10 five-shot sequences with smooth footwork transitions and 80% effective counter-attacks.'
+    target: 'Complete 10 five-shot sequences with smooth footwork transitions and 80% effective counter-attacks.',
+    youtubeQuery: 'badminton defence to attack transition drill'
   },
   // Net drills
   {
@@ -121,7 +133,8 @@ window.SIQ_DRILLS = [
     level: 'Beginner',
     minutes: 10,
     description: 'Stand at net. Shuttle bounces gently on racket face (dribble) for rhythm. When ready, tap it over net into opponent\'s forecourt as a drop. Focus on control and shuttle feel.',
-    target: '20 consecutive dribbles with smooth net taps; 15 of 20 drops land in forecourt.'
+    target: '20 consecutive dribbles with smooth net taps; 15 of 20 drops land in forecourt.',
+    youtubeQuery: 'badminton net shot technique drill beginner'
   },
   {
     id: 'nt2',
@@ -130,7 +143,8 @@ window.SIQ_DRILLS = [
     level: 'Intermediate',
     minutes: 12,
     description: 'Partner feeds to net; you execute a net kill (fast punch downward). Start 6 feet from net, then step in to 3 feet. Vary shuttle height. Kill angle and pace matter.',
-    target: '30 net kills across all distances; 24 of 30 land in kill zone (crosscourt or sideline angles).'
+    target: '30 net kills across all distances; 24 of 30 land in kill zone (crosscourt or sideline angles).',
+    youtubeQuery: 'badminton net kill drill technique'
   },
   {
     id: 'nt3',
@@ -139,7 +153,8 @@ window.SIQ_DRILLS = [
     level: 'Advanced',
     minutes: 14,
     description: 'Rally at net (both players front court). Shuttle goes back and forth at net height. On coach signal, attack downward with a net kill or punch. Opponent tries to recover.',
-    target: 'Execute 15 net rallies; land 12 of 15 kill shots that opponent cannot reach.'
+    target: 'Execute 15 net rallies; land 12 of 15 kill shots that opponent cannot reach.',
+    youtubeQuery: 'badminton net play exchange drill'
   },
   // Consistency drills
   {
@@ -149,7 +164,8 @@ window.SIQ_DRILLS = [
     level: 'Beginner',
     minutes: 12,
     description: 'Rally with partner from baseline to baseline. No coach feeds; just consistent clears and drives. Count consecutive legal shots. Stay deep, keep shuttle high.',
-    target: 'Achieve 3 rounds of 50-shot rallies without errors or net violations.'
+    target: 'Achieve 3 rounds of 50-shot rallies without errors or net violations.',
+    youtubeQuery: 'badminton clear rally consistency drill'
   },
   {
     id: 'cn2',
@@ -158,7 +174,8 @@ window.SIQ_DRILLS = [
     level: 'Intermediate',
     minutes: 13,
     description: 'Execute same 6-shot pattern 10 times: clear, clear, drop, clear, smash, clear. Partner feeds and retrieves. Repeat pattern identically, building rhythm and predictability.',
-    target: 'Complete 10 full 6-shot patterns with zero errors and smooth tempo throughout.'
+    target: 'Complete 10 full 6-shot patterns with zero errors and smooth tempo throughout.',
+    youtubeQuery: 'badminton pattern drill routine practice'
   },
   {
     id: 'cn3',
@@ -167,7 +184,8 @@ window.SIQ_DRILLS = [
     level: 'Advanced',
     minutes: 15,
     description: 'Play full rally games to 11 points (rally-scoring). No coach, match conditions. Focus on steady shot selection, court recovery, and maintaining pressure. Play 3 games.',
-    target: 'Win 2 of 3 games to 11 points by maintaining 70%+ consistency under match pressure.'
+    target: 'Win 2 of 3 games to 11 points by maintaining 70%+ consistency under match pressure.',
+    youtubeQuery: 'badminton match practice rally drill'
   }
 ];
 

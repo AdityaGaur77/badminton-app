@@ -53,7 +53,11 @@ function hasApiKey() {
    Waits for metadata, applies the seek-to-end trick if needed, bails at 3s. */
 function ensureDuration(videoEl) {
   return new Promise(resolve => {
-    const finish = () => resolve(videoEl.duration);
+    let settled = false;
+    const finish = () => { if (!settled) { settled = true; clearTimeout(hardBail); resolve(videoEl.duration); } };
+    // A file the browser can't decode never fires loadedmetadata, so without
+    // this the whole analysis would wait forever on a video that will never load.
+    const hardBail = setTimeout(finish, 10000);
     const fix = () => {
       if (isFinite(videoEl.duration) && videoEl.duration > 0) { finish(); return; }
       const onDur = () => {
@@ -103,17 +107,22 @@ async function extractFrames(videoEl, frameCount = 8) {
    happens, then pulls the real frames from those moments instead. */
 
 async function motionProfile(videoEl, maxSamples, onProgress) {
+  onProgress?.(0);
   const duration = await ensureDuration(videoEl);
-  if (!duration || !isFinite(duration)) throw new Error('Could not read the video duration — reload the clip and try again.');
+  if (!duration || !isFinite(duration)) {
+    throw new Error('This video could not be read by the browser — try a different clip, or re-record it as MP4.');
+  }
   const w = 64, h = 36;
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const samples = [];
   let prev = null;
+  const scanDeadline = Date.now() + 25000; // never let the scan itself become the wait
   for (let i = 0; i < maxSamples; i++) {
+    if (Date.now() > scanDeadline) break;
     const time = (duration * (i + 0.5)) / maxSamples;
-    await seekTo(videoEl, time);
+    await seekTo(videoEl, time, 1500);
     ctx.drawImage(videoEl, 0, 0, w, h);
     const data = ctx.getImageData(0, 0, w, h).data;
     let score = 0;
@@ -187,17 +196,27 @@ function blobToBase64(blob) {
   });
 }
 
-function seekTo(videoEl, time) {
+/* A seek that never completes (backgrounded tab, stalled decode, odd codec)
+   would otherwise hang the whole analysis with no way out — so give up on a
+   stuck seek and carry on with whatever frame is currently decoded. */
+function seekTo(videoEl, time, timeoutMs = 4000) {
   return new Promise((resolve, reject) => {
-    const onSeeked = () => { cleanup(); resolve(); };
-    const onError = () => { cleanup(); reject(new Error('Could not seek video.')); };
+    let settled = false;
     const cleanup = () => {
+      clearTimeout(timer);
       videoEl.removeEventListener('seeked', onSeeked);
       videoEl.removeEventListener('error', onError);
     };
+    const onSeeked = () => { if (!settled) { settled = true; cleanup(); resolve(); } };
+    const onError = () => { if (!settled) { settled = true; cleanup(); reject(new Error('Could not seek video.')); } };
+    const timer = setTimeout(() => { if (!settled) { settled = true; cleanup(); resolve(); } }, timeoutMs);
     videoEl.addEventListener('seeked', onSeeked);
     videoEl.addEventListener('error', onError);
-    videoEl.currentTime = time;
+    try {
+      videoEl.currentTime = time;
+    } catch (err) {
+      if (!settled) { settled = true; cleanup(); reject(err); }
+    }
   });
 }
 
@@ -414,7 +433,7 @@ const HONESTY_RULES = `Rules:
 - Write for a high-school player: concrete, encouraging, no jargon without explanation.`;
 
 /* Analysis from still frames (any provider). */
-async function analyzeGameplay(frames, focus) {
+async function analyzeGameplay(frames, focus, onStatus) {
   const prompt = `You are an expert badminton coach reviewing gameplay footage. The images are chronological still frames sampled from a short clip — they were chosen at moments of high movement, so they should show shots and rallies.
 
 Frame timestamps:
@@ -426,7 +445,9 @@ IMPORTANT: these are still images, so you cannot see timing, speed, or shuttle f
 ${OUTPUT_SHAPE}
 ${HONESTY_RULES}
 - Every timestamp must be one of the frame timestamps listed above.`;
-  const text = await callAI([...frameParts(frames), { text: prompt }]);
+  const text = await callAI([...frameParts(frames), { text: prompt }], 3000, {
+    onRetry: (n, ms, total) => onStatus?.(`The model is busy — retrying (${n}/${total}) in ${Math.round(ms / 1000)}s…`, null),
+  });
   const parsed = parseJsonReply(text);
   if (!parsed.feedback || !parsed.scores) throw new Error('AI reply missing expected fields.');
   return { ...parsed, method: 'frames' };
@@ -435,7 +456,9 @@ ${HONESTY_RULES}
 /* Analysis from the actual video (Gemini) — the model sees motion, so it can
    judge timing, footwork sequences and shot preparation properly. */
 async function analyzeGameplayVideo(blob, focus, durationSec, onStatus) {
+  onStatus?.(`Encoding ${Math.round(blob.size / 1048576 * 10) / 10} MB of video…`, 30);
   const videoB64 = await blobToBase64(blob);
+  onStatus?.('Uploading to the AI coach — this is the slow part…', null);
   const prompt = `You are an expert badminton coach reviewing a player's gameplay video (${durationSec ? Math.round(durationSec) + ' seconds' : 'about a minute'} long).
 ${FOCUS_MAP[focus] || FOCUS_MAP.all}
 
@@ -453,21 +476,27 @@ ${HONESTY_RULES}
 }
 
 /* Single entry point: use the best analysis this provider and clip allow. */
+/* onStatus(message, percent) — percent is 0-100 for work we can actually
+   measure, or null while we're waiting on the model (no honest number there). */
 async function runGameplayAnalysis({ videoEl, blob, focus, onStatus = () => {} }) {
   if (canSendNativeVideo(blob)) {
-    onStatus('Uploading the video for full-motion analysis…');
+    onStatus('Preparing your video…', 15);
     try {
-      return await analyzeGameplayVideo(blob, focus, videoEl?.duration, onStatus);
+      const res = await analyzeGameplayVideo(blob, focus, videoEl?.duration, (msg, pct) => onStatus(msg, pct));
+      onStatus('Done', 100);
+      return res;
     } catch (err) {
       // payload rejected / too large / model can't take video — fall back cleanly
-      onStatus('Video analysis unavailable, falling back to key frames…');
+      onStatus('Video analysis unavailable — falling back to key frames…', 20);
       console.warn('Native video analysis failed, using frames instead:', err);
     }
   }
-  onStatus('Finding the moments with the most action…');
-  const { frames, mode } = await extractKeyFrames(videoEl, 8, pct => onStatus(`Scanning the clip for action… ${pct}%`));
-  onStatus(`Sending ${frames.length} key moments to the AI coach…`);
-  const result = await analyzeGameplay(frames, focus);
+  onStatus('Scanning the clip for the moments with most action…', 5);
+  const { frames, mode } = await extractKeyFrames(videoEl, 8, pct =>
+    onStatus('Scanning the clip for the moments with most action…', 5 + Math.round(pct * 0.5)));
+  onStatus(`Sending ${frames.length} key moments to the AI coach…`, null);
+  const result = await analyzeGameplay(frames, focus, (msg, pct) => onStatus(msg, pct));
+  onStatus('Done', 100);
   return { ...result, sampling: mode };
 }
 

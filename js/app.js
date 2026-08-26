@@ -1760,7 +1760,13 @@ function renderAnalyze(_, params) {
         ? `<button class="btn btn-primary" id="an-go">Analyze with AI</button>`
         : `<button class="btn" id="an-demo">Preview a sample analysis</button>`}
       ${coach || me ? '<button class="btn" id="an-save-clip">Save clip to library</button>' : ''}
-      <span class="muted small" id="an-status"></span>
+    </div>
+    <div id="an-progress" class="ai-progress" hidden>
+      <div class="ai-bar"><span id="an-bar"></span></div>
+      <div class="ai-progress-row">
+        <span class="small muted" id="an-status"></span>
+        <span class="small muted" id="an-pct"></span>
+      </div>
     </div>
   </div>
 
@@ -1859,6 +1865,32 @@ function renderAnalyze(_, params) {
     }
   });
 
+  const progressBox = document.getElementById('an-progress');
+  const barEl = document.getElementById('an-bar');
+  const pctEl = document.getElementById('an-pct');
+
+  function setProgress(msg, pct) {
+    progressBox.hidden = false;
+    statusEl.textContent = msg || '';
+    if (pct == null) {
+      // no honest number while the model is thinking — show motion, not a fake %
+      barEl.classList.add('indeterminate');
+      barEl.style.width = '100%';
+      pctEl.textContent = 'working…';
+    } else {
+      barEl.classList.remove('indeterminate');
+      barEl.style.width = Math.max(0, Math.min(100, pct)) + '%';
+      pctEl.textContent = Math.round(pct) + '%';
+    }
+  }
+
+  function hideProgress() {
+    progressBox.hidden = true;
+    barEl.classList.remove('indeterminate');
+    barEl.style.width = '0%';
+    pctEl.textContent = '';
+  }
+
   async function runAnalysis(demo) {
     const goBtn = document.getElementById(demo ? 'an-demo' : 'an-go');
     const results = document.getElementById('an-results');
@@ -1867,13 +1899,14 @@ function renderAnalyze(_, params) {
     try {
       let parsed;
       if (demo) {
+        setProgress('Building a sample analysis…', 60);
         parsed = demoAnalysis(document.getElementById('an-focus').value);
       } else {
         parsed = await runGameplayAnalysis({
           videoEl,
           blob: currentBlob,
           focus: document.getElementById('an-focus').value,
-          onStatus: msg => { statusEl.textContent = msg; },
+          onStatus: (msg, pct) => setProgress(msg, pct),
         });
         const playerId = document.getElementById('an-player').value || null;
         state.sessions.push({
@@ -1885,7 +1918,7 @@ function renderAnalyze(_, params) {
         });
         saveState();
       }
-      statusEl.textContent = '';
+      hideProgress();
       results.innerHTML = renderAnalysisResults(parsed);
       results.querySelectorAll('[data-seek]').forEach(el => el.addEventListener('click', () => {
         const [m, s] = el.dataset.seek.split(':').map(Number);
@@ -1893,6 +1926,8 @@ function renderAnalyze(_, params) {
         videoEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }));
     } catch (err) {
+      hideProgress();
+      progressBox.hidden = false;
       statusEl.textContent = 'Analysis failed: ' + err.message;
     } finally {
       goBtn.disabled = false;
@@ -2162,7 +2197,9 @@ function renderDrills(_, params) {
         ${d.minutes ? `<span class="tag">${d.minutes} min</span>` : ''}
       </p>
       <p class="small">${esc(d.description)}</p>
-      ${d.target ? `<p class="small" style="color:var(--accent-dark)"><b>Target:</b> ${esc(d.target)}</p>` : ''}
+      ${d.target ? `<p class="small" style="color:var(--link)"><b>Target:</b> ${esc(d.target)}</p>` : ''}
+      ${d.youtubeQuery ? `<a class="btn btn-sm" target="_blank" rel="noopener"
+        href="https://www.youtube.com/results?search_query=${encodeURIComponent(d.youtubeQuery)}">▶ Watch on YouTube</a>` : ''}
     </div>`;
 
   const filtered = drills.filter(d => activeSkill === 'all' || d.skill === activeSkill);

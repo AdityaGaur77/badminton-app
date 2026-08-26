@@ -473,9 +473,11 @@ function endDemo() {
 /* ---------- sample data (demo/tour only) ---------- */
 
 function loadSampleData() {
+  // Deliberately not realistic personal names: nobody should mistake demo rows
+  // for real teammates, and the tour reads clearly as a demo.
   const names = [
-    ['Aarav Patel', 12], ['Ben Liu', 11], ['Chris Okafor', 12], ['Daniel Kim', 10],
-    ['Ethan Nguyen', 11], ['Felix Marsh', 9], ['Gabriel Santos', 12], ['Hiro Tanaka', 10],
+    ['Demo Alpha', 12], ['Demo Bravo', 11], ['Demo Charlie', 12], ['Demo Delta', 10],
+    ['Demo Echo', 11], ['Demo Foxtrot', 9], ['Demo Golf', 12], ['Demo Hotel', 10],
   ];
   const players = names.map(([name, year], i) => ({
     id: 'p' + i, name, year, hand: i % 3 === 0 ? 'Left' : 'Right', status: 'roster',
@@ -483,12 +485,12 @@ function loadSampleData() {
     tryoutScores: null, aiNote: null, notes: '', createdAt: new Date().toISOString(),
   }));
   players.push(
-    { id: 'p8', name: 'Ivan Petrov', year: 9, hand: 'Right', status: 'tryout', tryoutScores: { serve: 4, footwork: 3, smash: 4, net: 2, rally: 3, sense: 4, athleticism: 4 }, aiNote: null, createdAt: new Date().toISOString() },
-    { id: 'p9', name: 'Jay Sharma', year: 10, hand: 'Right', status: 'tryout', tryoutScores: { serve: 3, footwork: 4, smash: 2, net: 4, rally: 4, sense: 3, athleticism: 3 }, aiNote: null, createdAt: new Date().toISOString() },
+    { id: 'p8', name: 'Demo India', year: 9, hand: 'Right', status: 'tryout', tryoutScores: { serve: 4, footwork: 3, smash: 4, net: 2, rally: 3, sense: 4, athleticism: 4 }, aiNote: null, createdAt: new Date().toISOString() },
+    { id: 'p9', name: 'Demo Juliet', year: 10, hand: 'Right', status: 'tryout', tryoutScores: { serve: 3, footwork: 4, smash: 2, net: 4, rally: 4, sense: 3, athleticism: 3 }, aiNote: null, createdAt: new Date().toISOString() },
   );
 
   const matches = [];
-  const opponents = ['Westfield HS', 'Lakeside Prep', 'Northgate', 'St. Andrews', 'Riverview'];
+  const opponents = ['Demo School A', 'Demo School B', 'Demo School C', 'Demo School D', 'Demo School E'];
   let day = 0;
   for (let i = 0; i < 36; i++) {
     const p = players[i % 8];
@@ -510,15 +512,15 @@ function loadSampleData() {
   }
   // a few tryout matches for the two prospects
   matches.push(
-    { id: 'mt0', playerId: 'p8', partnerId: null, date: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10), opponent: 'Tryout court 1', discipline: 'MS', result: 'W', score: '21-14, 21-17', ratings: { footwork: 3, smash: 4, serve: 4, defense: 3, net: 2, consistency: 3 }, notes: '', context: 'tryout' },
-    { id: 'mt1', playerId: 'p8', partnerId: null, date: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10), opponent: 'Tryout court 1', discipline: 'MS', result: 'W', score: '21-18, 22-20', ratings: { footwork: 3, smash: 4, serve: 3, defense: 3, net: 3, consistency: 3 }, notes: '', context: 'tryout' },
-    { id: 'mt2', playerId: 'p9', partnerId: null, date: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10), opponent: 'Tryout court 2', discipline: 'MS', result: 'L', score: '18-21, 21-16, 19-21', ratings: { footwork: 4, smash: 2, serve: 3, defense: 4, net: 4, consistency: 4 }, notes: 'Great hands at the net', context: 'tryout' },
+    { id: 'mt0', playerId: 'p8', partnerId: null, date: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10), opponent: 'Demo tryout court', discipline: 'MS', result: 'W', score: '21-14, 21-17', ratings: { footwork: 3, smash: 4, serve: 4, defense: 3, net: 2, consistency: 3 }, notes: '', context: 'tryout' },
+    { id: 'mt1', playerId: 'p8', partnerId: null, date: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10), opponent: 'Demo tryout court', discipline: 'MS', result: 'W', score: '21-18, 22-20', ratings: { footwork: 3, smash: 4, serve: 3, defense: 3, net: 3, consistency: 3 }, notes: '', context: 'tryout' },
+    { id: 'mt2', playerId: 'p9', partnerId: null, date: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10), opponent: 'Demo tryout court', discipline: 'MS', result: 'L', score: '18-21, 21-16, 19-21', ratings: { footwork: 4, smash: 2, serve: 3, defense: 4, net: 4, consistency: 4 }, notes: 'Demo note: great hands at the net', context: 'tryout' },
   );
 
   // a couple of AI-style sessions so player profiles and feedback UI have content
   const sessions = [
     {
-      id: 's0', playerId: 'p0', date: new Date(Date.now() - 5 * 86400000).toISOString(), label: 'Practice clip', focus: 'all', clipId: null,
+      id: 's0', playerId: 'p0', date: new Date(Date.now() - 5 * 86400000).toISOString(), label: 'Demo practice clip', focus: 'all', clipId: null,
       scores: { footwork: 62, smash: 71, serve: 55, defense: 58, net: 49, consistency: 64 },
       feedback: [
         { timestamp: '0:12', type: 'positive', title: 'Strong smash preparation', body: 'Full sideways turn and early racket preparation before the jump smash. The contact point is consistently in front of the body.', tip: 'Keep it — add 20 half-court smashes per practice to lock it in.' },
@@ -527,7 +529,7 @@ function loadSampleData() {
       ],
     },
     {
-      id: 's1', playerId: 'p1', date: new Date(Date.now() - 8 * 86400000).toISOString(), label: 'Match warm-up', focus: 'net', clipId: null,
+      id: 's1', playerId: 'p1', date: new Date(Date.now() - 8 * 86400000).toISOString(), label: 'Demo match warm-up', focus: 'net', clipId: null,
       scores: { footwork: 55, smash: 48, serve: 61, defense: 52, net: 68, consistency: 57 },
       feedback: [
         { timestamp: '0:09', type: 'positive', title: 'Tight spinning net shots', body: 'Net shots consistently tumble close to the tape, forcing weak lifts.', tip: 'Add net-kill follow-ups so the point ends on the next shot.' },
@@ -538,7 +540,7 @@ function loadSampleData() {
 
   // one example lineup so the Rosters page shows a filled card
   const rosters = [{
-    id: 'r0', name: 'vs Westfield (sample)', date: new Date(Date.now() + 6 * 86400000).toISOString().slice(0, 10),
+    id: 'r0', name: 'Demo lineup vs Demo School A', date: new Date(Date.now() + 6 * 86400000).toISOString().slice(0, 10),
     slots: [
       { code: 'S1', label: 'Singles 1', type: 'singles', playerIds: ['p0'] },
       { code: 'S2', label: 'Singles 2', type: 'singles', playerIds: ['p2'] },
