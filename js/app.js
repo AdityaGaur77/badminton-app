@@ -759,6 +759,58 @@ function renderDashboard() {
 
 /* ---------- student dashboard ---------- */
 
+/* ---------- level, rank and skill tiles ---------- */
+
+/* Big level ring + rank + what earns points. Gives a reason to keep filming. */
+function levelCard(playerId, { compact = false } = {}) {
+  const lv = playerXP(playerId);
+  const badges = playerBadges(playerId);
+  const earned = badges.list.filter(b => b.earned).length;
+  const nextUp = badges.list.find(b => !b.earned);
+  return `
+  <div class="card level-card">
+    <div class="level-top">
+      ${ringSVG(lv.progressPct, { size: compact ? 84 : 104, stroke: compact ? 9 : 11, center: lv.level, sub: 'LEVEL' })}
+      <div class="level-meta">
+        <span class="rank-badge ${lv.rank.cls}">${esc(lv.rank.name)}</span>
+        <div class="level-xp">${lv.xp} XP</div>
+        <div class="small muted">${lv.needForNext} XP to level ${lv.level + 1}</div>
+        ${lv.breakdown.length
+          ? `<div class="xp-chips">${lv.breakdown.map(b => `<span class="xp-chip">+${b.xp}<span class="muted"> ${esc(b.label.toLowerCase())}</span></span>`).join('')}</div>`
+          : '<div class="small muted" style="margin-top:6px">Film a clip or play a match to earn your first XP.</div>'}
+      </div>
+    </div>
+    <div class="badge-row">
+      ${badges.list.map(b => `
+        <span class="badge ${b.earned ? 'on' : 'off'}" title="${esc(b.label)} - ${esc(b.desc)}">
+          <span class="badge-ico">${b.icon}</span><span class="badge-label">${esc(b.label)}</span>
+        </span>`).join('')}
+    </div>
+    <div class="small muted" style="margin-top:10px">
+      ${earned} of ${badges.total} badges${nextUp ? ` · next: <b>${esc(nextUp.label)}</b> — ${esc(nextUp.desc)}` : ' · all done!'}
+    </div>
+  </div>`;
+}
+
+/* One tile per skill, coloured by tier - the "rank each body part" view. */
+function skillTierGrid(playerId) {
+  const cards = skillTierCards(playerId);
+  if (!cards.some(c => c.value != null)) {
+    return '<p class="muted">No skill grades yet. Film one clip and every skill gets a grade.</p>';
+  }
+  return `<div class="tier-grid">${cards.map(c => {
+    const arrow = c.delta == null || c.delta === 0 ? ''
+      : `<span class="tier-delta ${c.delta > 0 ? 'trend-up' : 'trend-down'}">${c.delta > 0 ? '▲' : '▼'}${Math.abs(c.delta)}</span>`;
+    return `
+    <div class="tier-card ${c.tier.cls}">
+      <div class="tier-head">${esc(c.label)}</div>
+      <div class="tier-val">${c.value ?? '—'}${arrow}</div>
+      <div class="tier-meter"><span style="width:${c.value ?? 0}%"></span></div>
+      <div class="tier-foot">${esc(c.tier.name)}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
 function renderStudentDashboard() {
   const me = currentStudent();
   if (!me) {
@@ -800,6 +852,13 @@ function renderStudentDashboard() {
   <div class="page-head">
     <h1>Hi, ${esc(me.name.split(' ')[0])}</h1>
     <p class="muted">${esc(state.settings.teamName)}</p>
+  </div>
+
+  ${levelCard(me.id)}
+
+  <div class="card">
+    <div class="card-title">My skill grades</div>
+    ${skillTierGrid(me.id)}
   </div>
 
   <div class="grid2">
@@ -1070,6 +1129,10 @@ function renderPlayerDetail(id) {
   </div>
 
   <div class="grid2">
+    <div class="card">
+      <div class="card-title">Skill grades</div>
+      ${skillTierGrid(id)}
+    </div>
     <div class="card">
       <div class="card-title">Skill profile</div>
       ${profile ? radarSVG(profile) + skillBars(profile) : '<p class="muted">No data yet — rate a match or run a video analysis.</p>'}
@@ -1921,8 +1984,17 @@ function renderAnalyze(_, params) {
       hideProgress();
       results.innerHTML = renderAnalysisResults(parsed);
       results.querySelectorAll('[data-seek]').forEach(el => el.addEventListener('click', () => {
-        const [m, s] = el.dataset.seek.split(':').map(Number);
-        if (!isNaN(m)) videoEl.currentTime = m * 60 + s;
+        const [m, sec] = el.dataset.seek.split(':').map(Number);
+        if (!isNaN(m)) videoEl.currentTime = m * 60 + sec;
+        // open this point's detail, close the others - keeps the list short
+        const detail = el.nextElementSibling;
+        if (detail && detail.classList.contains('fb-detail')) {
+          const open = detail.hidden;
+          results.querySelectorAll('.fb-detail').forEach(d => { d.hidden = true; });
+          results.querySelectorAll('.fb-row').forEach(r => r.setAttribute('aria-expanded', 'false'));
+          detail.hidden = !open;
+          el.setAttribute('aria-expanded', String(open));
+        }
         videoEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }));
     } catch (err) {
@@ -1978,29 +2050,84 @@ function renderAnalyze(_, params) {
 }
 
 function renderAnalysisResults(parsed) {
-  const methodNote = parsed.demo ? '' : parsed.method === 'video'
-    ? 'Analyzed the <b>full video</b> — motion, footwork and timing included.'
-    : `Analyzed <b>8 key moments</b>${parsed.sampling === 'motion' ? ' picked from the busiest parts of the clip' : ''}. Still frames can\'t show timing or shuttle speed.`;
-  const conf = parsed.confidence && parsed.confidence !== 'high'
-    ? ` The coach rated its own confidence <b>${esc(parsed.confidence)}</b> for this footage.`
-    : '';
+  const ICONS = {
+    positive: '<path d="M4 12.5l5 5L20 6.5"/>',
+    critical: '<path d="M12 7v6"/><circle cx="12" cy="17" r="1.1" fill="currentColor" stroke="none"/>',
+    suggestion: '<path d="M5 12h13M13 6l6 6-6 6"/>',
+  };
+  const icon = t => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[t] || ICONS.suggestion}</svg>`;
+
+  const scores = parsed.scores || {};
+  const vals = SKILLS.map(k => scores[k]).filter(v => v != null);
+  const overall = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+
+  const counts = { critical: 0, suggestion: 0, positive: 0 };
+  for (const f of parsed.feedback) if (counts[f.type] != null) counts[f.type]++;
+
+  // scores as graded tiles, same language as the player's skill grades
+  const tiles = SKILLS.map(k => {
+    const v = scores[k];
+    const tier = skillTier(v);
+    return `
+    <div class="tier-card ${tier.cls}">
+      <div class="tier-head">${esc(SKILL_LABELS[k])}</div>
+      <div class="tier-val">${v ?? '—'}</div>
+      <div class="tier-meter"><span style="width:${v ?? 0}%"></span></div>
+      <div class="tier-foot">${esc(tier.name)}</div>
+    </div>`;
+  }).join('');
+
+  const chips = [];
+  if (!parsed.demo) {
+    chips.push(parsed.method === 'video'
+      ? '<span class="chip chip-w">Full video read</span>'
+      : '<span class="chip chip-neutral">8 key moments</span>');
+    if (parsed.confidence) {
+      const cls = parsed.confidence === 'high' ? 'chip-w' : parsed.confidence === 'low' ? 'chip-l' : 'chip-neutral';
+      chips.push(`<span class="chip ${cls}">${esc(parsed.confidence)} confidence</span>`);
+    }
+  }
   const notSeen = Array.isArray(parsed.notSeen) && parsed.notSeen.length
-    ? `<p class="small muted">Couldn't assess from this clip: ${parsed.notSeen.map(esc).join(', ')}. Film those situations to get feedback on them.</p>`
+    ? `<p class="small muted" style="margin-top:10px">Not visible in this clip: ${parsed.notSeen.map(esc).join(', ')}. Film those to get graded on them.</p>`
     : '';
+
   return `
   <div class="card">
-    ${parsed.demo ? '<div class="notice">This is a <b>sample</b> analysis so you can see the format — it was not generated from your video and is not saved. Add an API key in Settings for the real thing.</div>' : ''}
-    ${methodNote ? `<p class="small muted">${methodNote}${conf}</p>` : ''}
+    ${parsed.demo ? '<div class="notice">This is a <b>sample</b> so you can see the layout. It is not from your video and is not saved. Add an API key in Settings for the real thing.</div>' : ''}
+
+    <div class="score-hero">
+      ${ringSVG(overall, { size: 118, stroke: 12, sub: 'OVERALL' })}
+      <div class="score-hero-meta">
+        <div class="hero-tier ${skillTier(overall).cls}">${esc(skillTier(overall).name)}</div>
+        <div class="chip-row">${chips.join('')}</div>
+        <div class="fb-counts">
+          <span class="fb-count fb-critical">${icon('critical')} ${counts.critical} to fix</span>
+          <span class="fb-count fb-suggestion">${icon('suggestion')} ${counts.suggestion} to try</span>
+          <span class="fb-count fb-positive">${icon('positive')} ${counts.positive} good</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-title" style="margin-top:18px">Skill grades</div>
+    <div class="tier-grid">${tiles}</div>
+
+    <div class="card-title" style="margin-top:18px">Coaching points <span class="muted" style="text-transform:none;letter-spacing:0">— tap one to watch that moment</span></div>
+    <div class="fb-list">
+      ${parsed.feedback.map((f, i) => `
+        <div class="fb-item fb-${esc(f.type)}">
+          <button type="button" class="fb-row" data-seek="${esc(f.timestamp)}" data-fb="${i}" aria-expanded="false">
+            <span class="fb-dot">${icon(f.type)}</span>
+            <span class="fb-time">${esc(f.timestamp)}</span>
+            <span class="fb-title">${esc(f.title)}</span>
+            <span class="fb-chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="fb-detail" id="fb-d-${i}" hidden>
+            <p>${esc(f.body)}</p>
+            ${f.tip ? `<p class="fb-tip"><b>Try this:</b> ${esc(f.tip)}</p>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>
     ${notSeen}
-    <div class="card-title">Scores</div>
-    ${skillBars(parsed.scores)}
-    <div class="card-title" style="margin-top:16px">Feedback <span class="muted" style="text-transform:none;letter-spacing:0">— click a card to jump to that moment</span></div>
-    ${parsed.feedback.map(f => `
-      <div class="fb-card fb-${esc(f.type)}" data-seek="${esc(f.timestamp)}">
-        <div class="fb-head"><span class="fb-time">${esc(f.timestamp)}</span> <span class="fb-type">${esc(String(f.type).toUpperCase())}</span> ${esc(f.title)}</div>
-        <div class="fb-body">${esc(f.body)}</div>
-        ${f.tip ? `<div class="fb-tip">Drill: ${esc(f.tip)}</div>` : ''}
-      </div>`).join('')}
   </div>`;
 }
 

@@ -286,6 +286,115 @@ function teammateRecord(aId, bId) {
   return { aWins, bWins, total: aWins + bWins };
 }
 
+/* ---------- player level, rank and skill tiers ----------
+   Points come from doing the work (filming, playing) AND from getting better,
+   so a hard-working beginner still climbs. Everything is derived from data
+   already stored — nothing extra to track. */
+
+const XP_RULES = {
+  analysis: 25,   // per AI video analysis
+  match: 15,      // per match played
+  win: 10,        // extra per win
+  skillPoint: 2,  // per point of skill improvement
+};
+
+/* Cumulative XP needed to reach a level. Cheap early, steeper later. */
+function xpForLevel(level) {
+  const n = Math.max(0, level - 1);
+  return 40 * n + 10 * n * n;
+}
+
+const RANKS = [
+  { min: 15, name: 'Elite', cls: 'rank-elite' },
+  { min: 10, name: 'Captain', cls: 'rank-captain' },
+  { min: 6, name: 'Varsity', cls: 'rank-varsity' },
+  { min: 3, name: 'Starter', cls: 'rank-starter' },
+  { min: 1, name: 'Rookie', cls: 'rank-rookie' },
+];
+
+function rankForLevel(level) {
+  return RANKS.find(r => level >= r.min) || RANKS[RANKS.length - 1];
+}
+
+function playerXP(playerId) {
+  const sessions = playerSessions(playerId);
+  const matches = playerMatches(playerId);
+  const wins = matches.filter(m => m.result === 'W').length;
+  const prog = skillProgress(playerId);
+  const gained = prog ? prog.rows.reduce((sum, r) => sum + Math.max(0, r.delta), 0) : 0;
+
+  const breakdown = [
+    { label: 'Video analyses', count: sessions.length, xp: sessions.length * XP_RULES.analysis },
+    { label: 'Matches played', count: matches.length, xp: matches.length * XP_RULES.match },
+    { label: 'Matches won', count: wins, xp: wins * XP_RULES.win },
+    { label: 'Skill points gained', count: gained, xp: gained * XP_RULES.skillPoint },
+  ];
+  const xp = breakdown.reduce((s, b) => s + b.xp, 0);
+
+  let level = 1;
+  while (xpForLevel(level + 1) <= xp && level < 99) level++;
+  const base = xpForLevel(level);
+  const next = xpForLevel(level + 1);
+  const span = Math.max(1, next - base);
+
+  return {
+    xp, level, rank: rankForLevel(level),
+    intoLevel: xp - base,
+    needForNext: next - xp,
+    progressPct: Math.round(((xp - base) / span) * 100),
+    breakdown: breakdown.filter(b => b.count > 0),
+  };
+}
+
+/* Per-skill tier — the "rank each body part" idea, one tier per badminton skill. */
+const SKILL_TIERS = [
+  { min: 80, name: 'Elite', cls: 'tier-5' },
+  { min: 65, name: 'Strong', cls: 'tier-4' },
+  { min: 50, name: 'Solid', cls: 'tier-3' },
+  { min: 35, name: 'Building', cls: 'tier-2' },
+  { min: 0, name: 'Starting', cls: 'tier-1' },
+];
+
+function skillTier(value) {
+  if (value == null) return { name: 'No data', cls: 'tier-0', min: 0 };
+  return SKILL_TIERS.find(t => value >= t.min) || SKILL_TIERS[SKILL_TIERS.length - 1];
+}
+
+/* Every skill with its score, tier and recent movement — powers the card grid. */
+function skillTierCards(playerId) {
+  const profile = skillProfile(playerId);
+  const prog = skillProgress(playerId);
+  const deltas = {};
+  if (prog) for (const r of prog.rows) deltas[r.skill] = r.delta;
+  return SKILLS.map(s => {
+    const value = profile ? profile[s] : null;
+    return { skill: s, label: SKILL_LABELS[s], value, tier: skillTier(value), delta: deltas[s] ?? null };
+  });
+}
+
+/* Milestones. Simple, visible, and all reachable by a normal school player. */
+function playerBadges(playerId) {
+  const sessions = playerSessions(playerId).length;
+  const matches = playerMatches(playerId);
+  const wins = matches.filter(m => m.result === 'W').length;
+  const form = recentForm(playerId);
+  const profile = skillProfile(playerId);
+  const prog = skillProgress(playerId);
+  const bestGain = prog ? Math.max(0, ...prog.rows.map(r => r.delta)) : 0;
+  const solidCount = profile ? SKILLS.filter(s => (profile[s] ?? 0) >= 50).length : 0;
+
+  const list = [
+    { id: 'first-film', icon: '🎬', label: 'First film', desc: 'Analyse one clip', earned: sessions >= 1 },
+    { id: 'five-films', icon: '🎥', label: 'Regular filmer', desc: 'Analyse 5 clips', earned: sessions >= 5 },
+    { id: 'first-win', icon: '🏸', label: 'First win', desc: 'Win a match', earned: wins >= 1 },
+    { id: 'ten-matches', icon: '📅', label: 'Match ready', desc: 'Play 10 matches', earned: matches.length >= 10 },
+    { id: 'streak', icon: '🔥', label: 'On a run', desc: 'Win 3 in a row', earned: !!form && form.streak.type === 'W' && form.streak.count >= 3 },
+    { id: 'improver', icon: '📈', label: 'Improver', desc: 'Raise a skill by 10', earned: bestGain >= 10 },
+    { id: 'allrounder', icon: '⭐', label: 'All-rounder', desc: 'All 6 skills at 50+', earned: solidCount === SKILLS.length },
+  ];
+  return { list, earned: list.filter(b => b.earned).length, total: list.length };
+}
+
 /* Plain-language coach read on a player, no API needed. */
 function localCoachNote(playerId) {
   const form = recentForm(playerId);

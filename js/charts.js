@@ -111,6 +111,31 @@ function radarCompareSVG(profileA, profileB, { size = 300 } = {}) {
   </svg>`;
 }
 
+/* Circular progress ring — a score you can read at a glance, no reading needed. */
+function ringSVG(value, { size = 92, stroke = 9, tone = null, center = null, sub = null } = {}) {
+  const C = chartColors();
+  const pct = Math.max(0, Math.min(100, Number(value) || 0));
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+  const colour = tone || C.accent;
+  const mid = size / 2;
+  const clean = t => String(t).replace(/[<>&"]/g, '');
+  const bigText = clean(center != null ? center : Math.round(pct));
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" class="ring" role="img" aria-label="${bigText}${sub ? ' ' + clean(sub) : ''}">
+    <circle cx="${mid}" cy="${mid}" r="${r}" fill="none" stroke="${C.faint}" stroke-width="${stroke}" class="c-grid"/>
+    <circle cx="${mid}" cy="${mid}" r="${r}" fill="none" stroke="${colour}" stroke-width="${stroke}"
+      stroke-linecap="round" stroke-dasharray="${dash.toFixed(1)} ${(circ - dash).toFixed(1)}"
+      transform="rotate(-90 ${mid} ${mid})" class="c-line"/>
+    <text x="${mid}" y="${mid}" text-anchor="middle" dominant-baseline="central"
+      font-family="system-ui, sans-serif" font-size="${Math.round(size * 0.30)}" font-weight="800"
+      fill="${C.ink}" class="c-label">${bigText}</text>
+    ${sub ? `<text x="${mid}" y="${mid + size * 0.23}" text-anchor="middle" dominant-baseline="central"
+      font-family="system-ui, sans-serif" font-size="${Math.round(size * 0.13)}" font-weight="700"
+      fill="${C.muted}" class="c-label">${clean(sub)}</text>` : ''}
+  </svg>`;
+}
+
 /* Rolling win-rate sparkline from a newest-first match list. */
 function sparklineSVG(matches, { w = 120, h = 28 } = {}) {
   const C = chartColors();
