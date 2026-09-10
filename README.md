@@ -50,12 +50,16 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 - Settings also has JSON export/import for backups, a **guided tour**, and a storage meter.
 - **Works offline & installs like an app** — once opened over http(s), a service worker caches the app (gym wifi won't take it down), and on a phone you can "Add to Home Screen" for a standalone app experience.
 
+- **Usage analytics (optional)** — anonymous counts of visitors and actions. Tap the logo 5 times to reach a password-protected page. Needs two Vercel serverless functions plus an env var; see `ANALYTICS.md`. No names, scores, or video ever leave the device.
+
 ### Files
 | File | Purpose |
 |---|---|
 | `index.html` | App shell, CSP, favicon, script loading |
 | `manifest.json` / `icon.svg` / `sw.js` | Installable PWA + offline caching (network-first) |
 | `styles.css` | Light design system: tokens, cards, tables, forms, print rules |
+| `js/track.js` | Anonymous usage counter (fails silently offline) |
+| `api/*.js` | Serverless analytics endpoints (see `ANALYTICS.md`) |
 | `js/data.js` | Drill library (18 drills) + pro study list (14 players) |
 | `js/store.js` | localStorage persistence (with v5 migration), roles/passcode, IndexedDB clip library, redacted export/import, sample data |
 | `js/analytics.js` | Form, position fit, drills, roster suggestions, pair chemistry, depth chart, practice plan, head-to-head |

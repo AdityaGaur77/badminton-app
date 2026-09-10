@@ -54,6 +54,7 @@ const ROUTES = {
   compare: renderCompare,
   drills: renderDrills,
   guide: renderGuide,
+  admin: renderAdmin,
   recovery: renderRecovery,
   score: renderScore,
   ladder: renderLadder,
@@ -83,6 +84,7 @@ function route() {
   // players may open their own profile, nobody else's
   if (name === 'player' && !isCoach() && getStudentId() !== arg) { location.hash = '#/'; return; }
 
+  countVisit(role);
   buildNav();
   VIEW.innerHTML = '';
   (ROUTES[name] || renderRoot)(arg, params);
@@ -171,6 +173,7 @@ function buildNav() {
     </div>
     ${links ? `<div class="nav-links">${links}</div>` : ''}`;
   TABBAR.innerHTML = tabs;
+  NAV.querySelector('.logo')?.addEventListener('click', noteLogoTap);
   NAV.querySelector('[data-logout]')?.addEventListener('click', logout);
   NAV.querySelector('[data-theme-cycle]').addEventListener('click', () => {
     const order = ['midnight', 'court', 'clean'];
@@ -193,9 +196,43 @@ function markNav(name) {
 
 function logout() { setRole(null); location.hash = '#/'; route(); }
 
+/* ---------- usage counting (anonymous) ---------- */
+
+function countVisit(role) {
+  trackOnce('app_open');
+  if (role === 'coach') trackOnce('session_coach');
+  else if (role === 'student') trackOnce('session_player');
+}
+
+/* Tap the logo 5 times quickly to reach the private analytics page. */
+const LOGO_TAP_KEY = 'siq_logo_taps';
+const LOGO_TAP_WINDOW = 5000;
+
+/* Taps are kept in sessionStorage, not a variable, so they survive the
+   re-render that a logo click causes. */
+function noteLogoTap(e) {
+  const now = Date.now();
+  let taps = [];
+  try { taps = JSON.parse(sessionGet(LOGO_TAP_KEY) || '[]'); } catch { taps = []; }
+  taps = taps.filter(t => now - t < LOGO_TAP_WINDOW);
+  taps.push(now);
+
+  if (taps.length >= 5) {
+    sessionRemove(LOGO_TAP_KEY);
+    // the logo is a link to home - stop that jump, or it would immediately
+    // undo the hash we are about to set
+    if (e) e.preventDefault();
+    location.hash = '#/admin';
+    route();
+    return;
+  }
+  sessionSet(LOGO_TAP_KEY, JSON.stringify(taps));
+}
+
 const THEME_LABELS = { midnight: 'Midnight', court: 'Court', clean: 'Clean' };
 
 function setTheme(name) {
+  track('theme_' + name);
   applyTheme(name);
   saveState();
   toast('Theme: ' + THEME_LABELS[state.settings.theme]);
@@ -245,6 +282,7 @@ function beginTour(kind) {
   startDemo();
   if (kind === 'student') { setRole('student'); setStudentId('p1'); }
   else setRole('coach');
+  track('tour_started_' + kind);
   sessionSet(TOUR_KEY, JSON.stringify({ kind, step: 0, prevRole, prevStudent }));
   location.hash = TOURS[kind].steps[0].hash;
   route();
@@ -1403,6 +1441,7 @@ function renderMatches(_, params) {
       context: player && player.status === 'tryout' ? 'tryout' : 'season',
     });
     saveState();
+    track('match_logged');
     toast('Match saved');
     // keep the player preselected (and the tryouts back-link) for quick repeat logging
     renderMatches(_, new URLSearchParams(preselect ? `player=${preselect}` : (filterPlayer ? `f=${filterPlayer}` : '')));
@@ -1685,6 +1724,7 @@ function wireRosterCard(r) {
     renderRosters();
   }));
   card.querySelector('[data-act="auto"]').addEventListener('click', () => {
+    track('roster_autofill');
     const suggestion = suggestRoster(r.slots);
     // rebuild from scratch — leaving stale picks in unfillable slots is how an
     // injured player ends up still listed in the lineup
@@ -1982,6 +2022,7 @@ function renderAnalyze(_, params) {
         saveState();
       }
       hideProgress();
+      track(demo ? 'analyze_demo' : (parsed.method === 'video' ? 'analyze_video' : 'analyze_frames'));
       results.innerHTML = renderAnalysisResults(parsed);
       results.querySelectorAll('[data-seek]').forEach(el => el.addEventListener('click', () => {
         const [m, sec] = el.dataset.seek.split(':').map(Number);
@@ -2522,6 +2563,7 @@ function renderScorerBoard(s) {
     });
     saveState();
     saveScorer(null);
+    track('live_score_saved');
     toast('Match saved to the log');
     location.hash = '#/matches';
   });
@@ -2595,6 +2637,7 @@ function renderLadder() {
       { id: uid(), playerId: loserId, partnerId: null, date, opponent: playerName(winnerId), discipline: 'MS', result: 'L', score, ratings: {}, notes: 'Ladder challenge', context: 'ladder' },
     );
     saveState();
+    track('ladder_challenge');
     if (challengerWon) {
       const newRank = applyChallengeResult(challengerId, defenderId);
       toast(newRank ? `${playerName(challengerId)} moves to #${newRank}` : 'Result logged — no rank change');
@@ -2694,6 +2737,151 @@ function renderVersus(_, params) {
     const nextB = VIEW.querySelector('[data-vs="b"]').value;
     location.hash = `#/vs?a=${nextA}&b=${nextB}`;
   }));
+}
+
+/* ---------- private analytics page ----------
+   Reached by tapping the logo 5 times. The password is checked on the
+   server, so it never ships to the browser. Counts are anonymous. */
+
+const ADMIN_PW_KEY = 'siq_admin_pw';
+
+function renderAdmin() {
+  VIEW.innerHTML = `
+  <div class="page-head">
+    <h1>Usage analytics</h1>
+    <p class="muted">Anonymous counts only</p>
+  </div>
+  <div id="adm-body"></div>`;
+  const box = document.getElementById('adm-body');
+  const saved = sessionGet(ADMIN_PW_KEY);
+  if (saved) { loadAdminStats(saved, box); return; }
+  renderAdminLogin(box);
+}
+
+function renderAdminLogin(box, message) {
+  box.innerHTML = `
+  <div class="gate" style="margin-top:0">
+    <div class="card">
+      <h2>Enter password</h2>
+      <p class="muted small">This is the password you set as <b>ANALYTICS_PASSWORD</b> in Vercel.</p>
+      <label>Password<input type="password" id="adm-pw" autocomplete="off"></label>
+      <div id="adm-err" class="small" style="color:var(--loss);min-height:18px;margin-top:6px">${message ? esc(message) : ''}</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="adm-go">Open</button>
+        <a class="btn" href="#/">Back to app</a>
+      </div>
+    </div>
+  </div>`;
+  const go = () => {
+    const pw = document.getElementById('adm-pw').value;
+    if (!pw) { document.getElementById('adm-err').textContent = 'Type the password first.'; return; }
+    loadAdminStats(pw, box);
+  };
+  document.getElementById('adm-go').addEventListener('click', go);
+  document.getElementById('adm-pw').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  document.getElementById('adm-pw').focus();
+}
+
+async function loadAdminStats(password, box) {
+  box.innerHTML = '<div class="card"><p class="muted">Loading counts…</p></div>';
+  let data;
+  try {
+    const res = await fetch('/api/stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    data = await res.json().catch(() => ({
+      ok: false,
+      error: res.status === 405 || res.status === 404
+        ? 'Analytics only work on the deployed site, not a local preview.'
+        : 'The server sent a reply this page could not read.',
+    }));
+    if (!res.ok || !data.ok) {
+      sessionRemove(ADMIN_PW_KEY);
+      renderAdminLogin(box, data.error || ('Failed (' + res.status + ')'));
+      return;
+    }
+  } catch (err) {
+    sessionRemove(ADMIN_PW_KEY);
+    renderAdminLogin(box, 'Could not reach the server. Analytics only work on the live site, not a local file.');
+    return;
+  }
+  sessionSet(ADMIN_PW_KEY, password);
+  box.innerHTML = adminStatsHTML(data);
+  document.getElementById('adm-refresh')?.addEventListener('click', () => loadAdminStats(password, box));
+  document.getElementById('adm-out')?.addEventListener('click', () => {
+    sessionRemove(ADMIN_PW_KEY);
+    renderAdmin();
+  });
+}
+
+function adminStatsHTML(data) {
+  const days = data.perDay || [];
+  const today = days[days.length - 1] || { visitors: 0, actions: 0 };
+  const totals = data.totals || {};
+  const totalActions = Object.values(totals).reduce((a, b) => a + b, 0);
+  const last7 = days.slice(-7);
+  const peak = Math.max(1, ...days.map(d => d.actions));
+
+  const eventRows = Object.entries(totals)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => `
+      <tr>
+        <td>${esc(name.replace(/_/g, ' '))}</td>
+        <td style="width:55%">
+          <span class="bar-track"><span class="bar-fill" style="width:${Math.round((count / Math.max(...Object.values(totals), 1)) * 100)}%"></span></span>
+        </td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums"><b>${count}</b></td>
+      </tr>`).join('');
+
+  const dayRows = [...days].reverse().slice(0, 14).map(d => `
+    <tr>
+      <td class="muted">${esc(d.date)}</td>
+      <td>${d.visitors}</td>
+      <td>${d.actions}</td>
+      <td style="width:45%"><span class="bar-track"><span class="bar-fill" style="width:${Math.round((d.actions / peak) * 100)}%"></span></span></td>
+    </tr>`).join('');
+
+  return `
+  <div class="scoreboard">
+    <div class="sb-item"><div class="sb-num gold">${data.uniqueAll || 0}</div><div class="sb-label">People ever</div></div>
+    <div class="sb-item"><div class="sb-num">${today.visitors || 0}</div><div class="sb-label">People today</div></div>
+    <div class="sb-item"><div class="sb-num">${today.actions || 0}</div><div class="sb-label">Actions today</div></div>
+    <div class="sb-item"><div class="sb-num">${totalActions}</div><div class="sb-label">Actions ever</div></div>
+  </div>
+
+  <div class="grid2 section">
+    <div class="card">
+      <div class="card-title">What people do (all time)</div>
+      ${eventRows ? `<div class="table-wrap"><table><tbody>${eventRows}</tbody></table></div>` : '<p class="muted">No actions counted yet.</p>'}
+    </div>
+    <div class="card">
+      <div class="card-title">Last 7 days</div>
+      ${last7.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Day</th><th>People</th><th>Actions</th></tr></thead>
+        <tbody>${last7.map(d => `<tr><td class="muted">${esc(d.date)}</td><td><b>${d.visitors}</b></td><td>${d.actions}</td></tr>`).join('')}</tbody>
+      </table></div>` : '<p class="muted">Nothing yet.</p>'}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Day by day</div>
+    ${dayRows ? `<div class="table-wrap"><table>
+      <thead><tr><th>Day</th><th>People</th><th>Actions</th><th></th></tr></thead>
+      <tbody>${dayRows}</tbody></table></div>` : '<p class="muted">Nothing yet.</p>'}
+  </div>
+
+  <div class="card">
+    <div class="card-title">What is counted</div>
+    <p class="small muted">Only an event name, a random device id, and the date. <b>No names, no scores, no video, nothing typed into the app.</b> A player cannot be identified from this page.</p>
+    <div class="btn-row">
+      <button class="btn btn-sm" id="adm-refresh">Refresh</button>
+      <button class="btn btn-sm" id="adm-out">Lock again</button>
+      <a class="btn btn-sm" href="#/">Back to app</a>
+    </div>
+    <p class="small muted">Updated ${esc(String(data.generatedAt || '').slice(0, 16).replace('T', ' '))} UTC</p>
+  </div>`;
 }
 
 /* ---------- guide (public) ---------- */
