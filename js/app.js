@@ -55,6 +55,7 @@ const ROUTES = {
   drills: renderDrills,
   guide: renderGuide,
   admin: renderAdmin,
+  leaders: renderLeaders,
   recovery: renderRecovery,
   score: renderScore,
   ladder: renderLadder,
@@ -63,7 +64,7 @@ const ROUTES = {
 };
 
 const COACH_ONLY = new Set(['players', 'matches', 'tryouts', 'rosters', 'insights', 'settings', 'recovery', 'score', 'vs']);
-const NEEDS_ROLE = new Set([...COACH_ONLY, 'analyze', 'compare', 'team', 'drills', 'player', 'ladder']);
+const NEEDS_ROLE = new Set([...COACH_ONLY, 'analyze', 'compare', 'team', 'drills', 'player', 'ladder', 'leaders']);
 
 function parseHash() {
   const hash = location.hash.replace(/^#\/?/, '');
@@ -232,6 +233,13 @@ function noteLogoTap(e) {
 const THEME_LABELS = { midnight: 'Midnight', court: 'Court', clean: 'Clean' };
 
 function setTheme(name) {
+  // players earn themes with streaks; a coach always has all of them
+  const me = getStudentId();
+  if (me && !isCoach() && !themeIsUnlocked(me, name)) {
+    const row = themeUnlockState(me).find(t => t.theme === name);
+    toast((row ? row.label : 'That') + ' theme unlocks at a ' + (row ? row.needs : 3) + '-day streak');
+    return;
+  }
   track('theme_' + name);
   applyTheme(name);
   saveState();
@@ -536,22 +544,43 @@ function renderLanding() {
 function renderLogin() {
   if (getRole()) { location.hash = '#/'; return; }
   const roster = state.players.filter(p => p.status === 'roster');
+
+  const gIcon = `<svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-4H24v8h12c-.2 2-1.5 5-4.8 7l6.5 5C41.5 36.3 45 30.8 45 24z"/>
+    <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.5-5C30 37 27.3 38 24 38c-5.8 0-10.7-3.8-12.5-9l-6.8 5.2C8.4 41.1 15.6 46 24 46z"/>
+    <path fill="#FBBC05" d="M11.5 29c-.5-1.4-.8-3-.8-5s.3-3.6.8-5L4.7 13.8C3 17 2 20.4 2 24s1 7 2.7 10.2L11.5 29z"/>
+    <path fill="#EA4335" d="M24 10c3.3 0 6.2 1.1 8.5 3.3l5.7-5.7C34.8 4.3 29.9 2 24 2 15.6 2 8.4 6.9 4.7 13.8L11.5 19c1.8-5.2 6.7-9 12.5-9z"/>
+  </svg>`;
+
   VIEW.innerHTML = `
-  <div class="gate">
+  <div class="gate login-gate">
     <div class="card">
-      <h2>Who are you?</h2>
+      <h2>Sign in</h2>
+      <p class="muted small">Sign in to keep your streak, badges and growth on every device. Guest works too, but it stays on this one.</p>
+
+      <div class="login-options">
+        <button class="btn login-opt" id="login-google">${gIcon}<span>Continue with Google</span></button>
+        <button class="btn login-opt" id="login-phone">📱<span>Use my phone number</span></button>
+      </div>
+      <p class="small muted" id="login-note"></p>
+
+      <div class="or-line"><span>or</span></div>
+
       ${roster.length ? `
-        <label>Pick your name
+        <label>On this team's device? Pick your name
           <select id="login-player">${playerOptions(null)}</select>
         </label>
-        <div class="btn-row"><button class="btn btn-primary" id="login-go">Enter as player</button></div>
-        <hr>` : `<p class="muted small">No roster on this device yet — you can still explore as a guest.</p>`}
+        <div class="btn-row"><button class="btn btn-primary" id="login-go">Enter as player</button></div>`
+      : '<p class="muted small">No roster on this device yet. You can still look around as a guest.</p>'}
+
       <div class="btn-row">
         <button class="btn" id="login-guest">Continue as guest</button>
         <a class="btn" href="#/coach">I'm the coach</a>
       </div>
+      <p class="small muted">Your team data stays in this browser. Signing in only links your streak to you.</p>
     </div>
   </div>`;
+
   document.getElementById('login-go')?.addEventListener('click', () => {
     setRole('student');
     setStudentId(document.getElementById('login-player').value);
@@ -562,6 +591,102 @@ function renderLogin() {
     setStudentId(null);
     location.hash = '#/';
   });
+
+  // Google and phone need server setup. Ask the server what is switched on,
+  // and say so plainly instead of showing a button that quietly fails.
+  const note = document.getElementById('login-note');
+  const gBtn = document.getElementById('login-google');
+  const pBtn = document.getElementById('login-phone');
+  gBtn.disabled = true;
+  pBtn.disabled = true;
+  note.textContent = 'Checking which sign-in methods are switched on…';
+
+  authConfig().then(cfg => {
+    gBtn.disabled = !cfg.google;
+    pBtn.disabled = !cfg.phone;
+    const off = [];
+    if (!cfg.google) off.push('Google');
+    if (!cfg.phone) off.push('phone');
+    note.innerHTML = off.length
+      ? `${off.join(' and ')} sign-in ${off.length > 1 ? 'are' : 'is'} not switched on yet — see <b>ACCOUNTS.md</b>. Everything below works now.`
+      : 'Pick whichever is easiest.';
+  }).catch(() => {
+    note.textContent = 'Sign-in services are unreachable here. Use a name or guest below.';
+  });
+
+  gBtn.addEventListener('click', async () => {
+    gBtn.disabled = true;
+    note.textContent = 'Opening Google…';
+    try {
+      const acct = await signInWithGoogle();
+      setRole('student');
+      linkAccountToPlayer(acct);
+      toast('Signed in as ' + (acct.name || 'you'));
+      location.hash = '#/';
+      route();
+    } catch (err) {
+      note.textContent = 'Google sign-in failed: ' + err.message;
+      gBtn.disabled = false;
+    }
+  });
+
+  pBtn.addEventListener('click', () => renderPhoneLogin());
+}
+
+/* Phone sign-in: ask for the number, then the 6-digit code. */
+function renderPhoneLogin(step) {
+  const stage = step || { phase: 'number' };
+  VIEW.innerHTML = `
+  <div class="gate">
+    <div class="card">
+      <h2>${stage.phase === 'number' ? 'Your phone number' : 'Enter your code'}</h2>
+      ${stage.phase === 'number'
+        ? `<p class="muted small">We text you a 6-digit code. Standard message rates apply.</p>
+           <label>Phone number<input type="tel" id="ph-num" placeholder="+1 555 123 4567" autocomplete="tel"></label>`
+        : `<p class="muted small">We texted a code to ${esc(stage.phone)}.</p>
+           <label>6-digit code<input type="text" id="ph-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>`}
+      <div id="ph-err" class="small" style="color:var(--loss);min-height:18px;margin-top:6px"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="ph-go">${stage.phase === 'number' ? 'Send code' : 'Sign in'}</button>
+        <a class="btn" href="#/login">Back</a>
+      </div>
+    </div>
+  </div>`;
+
+  const err = document.getElementById('ph-err');
+  document.getElementById('ph-go').addEventListener('click', async () => {
+    const btn = document.getElementById('ph-go');
+    btn.disabled = true;
+    err.textContent = '';
+    try {
+      if (stage.phase === 'number') {
+        const phone = document.getElementById('ph-num').value.trim();
+        if (phone.replace(/\D/g, '').length < 7) throw new Error('That number looks too short.');
+        await startPhoneOtp(phone);
+        renderPhoneLogin({ phase: 'code', phone });
+      } else {
+        const code = document.getElementById('ph-code').value.trim();
+        const acct = await verifyPhoneOtp(stage.phone, code);
+        setRole('student');
+        linkAccountToPlayer(acct);
+        toast('Signed in');
+        location.hash = '#/';
+        route();
+      }
+    } catch (e) {
+      err.textContent = e.message;
+      btn.disabled = false;
+    }
+  });
+  VIEW.querySelector('input')?.focus();
+}
+
+/* A signed-in account is matched to a roster player by name when possible,
+   so their existing streak and history carry over. */
+function linkAccountToPlayer(acct) {
+  const name = (acct.name || '').trim().toLowerCase();
+  const match = name && state.players.find(p => p.status === 'roster' && p.name.trim().toLowerCase() === name);
+  setStudentId(match ? match.id : null);
 }
 
 function renderGate(_, params) {
@@ -797,6 +922,92 @@ function renderDashboard() {
 
 /* ---------- student dashboard ---------- */
 
+/* ---------- daily streak card ---------- */
+
+function streakCard(playerId) {
+  const st = dailyStreak(playerId);
+  const cal = streakCalendar(playerId, 28);
+  const themes = themeUnlockState(playerId);
+  const nextBadge = STREAK_BADGES.find(b => st.longest < b.days);
+  const nextTheme = themes.find(t => !t.unlocked);
+
+  const status = st.todayDone
+    ? '<div class="streak-ok">Today is done. Nice.</div>'
+    : st.atRisk
+      ? '<div class="streak-warn">Film today or your run ends.</div>'
+      : '<div class="small muted">Film one clip today to start a run.</div>';
+
+  return `
+  <div class="card streak-card">
+    <div class="streak-top">
+      <div class="flame ${st.current > 0 ? 'lit' : ''}">
+        <span class="flame-ico">${st.current > 0 ? '🔥' : '🏸'}</span>
+        <span class="flame-num">${st.current}</span>
+      </div>
+      <div class="streak-meta">
+        <div class="streak-head">${st.current > 0 ? st.current + '-day streak' : 'No streak yet'}</div>
+        <div class="small muted">Best ever ${st.longest} · ${st.totalDays} day${st.totalDays === 1 ? '' : 's'} filmed</div>
+        ${status}
+      </div>
+    </div>
+
+    <div class="cal-strip" aria-label="Last 28 days">
+      ${cal.map(d => `<span class="cal-dot ${d.done ? 'on' : ''}${d.isToday ? ' today' : ''}" title="${esc(d.day)}${d.done ? ' filmed' : ''}"></span>`).join('')}
+    </div>
+
+    <div class="badge-row">
+      ${STREAK_BADGES.map(b => `
+        <span class="badge ${st.longest >= b.days ? 'on' : 'off'}" title="${b.days}-day streak">
+          <span class="badge-ico">${b.icon}</span><span class="badge-label">${esc(b.label)}</span>
+        </span>`).join('')}
+    </div>
+
+    <div class="badge-row">
+      ${themes.map(t => `<span class="badge ${t.unlocked ? 'on' : 'off'}" title="${t.needs === 0 ? 'Always available' : t.needs + '-day streak'}">
+        <span class="badge-ico">${t.unlocked ? '🎨' : '🔒'}</span><span class="badge-label">${esc(t.label)} theme</span></span>`).join('')}
+    </div>
+
+    <div class="small muted" style="margin-top:10px">
+      ${nextBadge ? `Next badge at <b>${nextBadge.days} days</b>.` : 'Every streak badge earned.'}
+      ${nextTheme ? ` ${esc(nextTheme.label)} theme unlocks at <b>${nextTheme.needs} days</b>.` : ''}
+    </div>
+
+    <div class="btn-row">
+      <a class="btn ${st.todayDone ? '' : 'btn-primary'}" href="#/analyze">${st.todayDone ? 'Film another clip' : 'Film a clip today'}</a>
+      <a class="btn btn-sm" href="#/leaders">Team leaderboard</a>
+    </div>
+  </div>`;
+}
+
+/* ---------- team leaderboard (works with no accounts) ---------- */
+
+function renderLeaders() {
+  const rows = streakLeaderboard();
+  const meId = getStudentId();
+  const medal = i => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '');
+
+  VIEW.innerHTML = `
+  <div class="page-head">
+    <h1>Team leaderboard</h1>
+    <p class="muted">Ranked by current filming streak</p>
+  </div>
+  ${rows.length ? `<div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Player</th><th>Streak</th><th>Best</th><th>Days</th><th>Level</th></tr></thead>
+    <tbody>${rows.map((r, i) => `
+      <tr${r.player.id === meId ? ' style="background:var(--accent-soft)"' : ''}>
+        <td><span class="rank-num">${medal(i) || (i + 1)}</span></td>
+        <td>${playerLink(r.player.id)}${r.player.id === meId ? ' <span class="tag tag-accent">you</span>' : ''}</td>
+        <td><b>${r.current > 0 ? '🔥 ' + r.current : '—'}</b></td>
+        <td>${r.longest || '—'}</td>
+        <td>${r.days}</td>
+        <td><span class="rank-badge ${r.rank.cls}">${esc(r.rank.name)}</span> <span class="muted small">L${r.level}</span></td>
+      </tr>`).join('')}</tbody>
+  </table></div>
+  <p class="small muted">One day counts per AI video analysis. Filming twice in a day still counts once.</p>
+  </div>`
+  : '<div class="empty"><h3>Nobody on the board yet</h3><p>A player joins the board the first time they film a clip and run an AI analysis.</p><div class="btn-row center"><a class="btn btn-primary" href="#/analyze">Film a clip</a></div></div>'}`;
+}
+
 /* ---------- level, rank and skill tiles ---------- */
 
 /* Big level ring + rank + what earns points. Gives a reason to keep filming. */
@@ -891,6 +1102,8 @@ function renderStudentDashboard() {
     <h1>Hi, ${esc(me.name.split(' ')[0])}</h1>
     <p class="muted">${esc(state.settings.teamName)}</p>
   </div>
+
+  ${streakCard(me.id)}
 
   ${levelCard(me.id)}
 

@@ -286,6 +286,115 @@ function teammateRecord(aId, bId) {
   return { aWins, bWins, total: aWins + bWins };
 }
 
+/* ---------- daily video streak ----------
+   One "video day" = a day the player ran at least one AI analysis. Streaks
+   use LOCAL dates, because a player filming at 9pm must not lose a day. */
+
+function localDayKey(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d)) return null;
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function shiftDay(key, deltaDays) {
+  const [y, m, d] = key.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + deltaDays);
+  return localDayKey(dt);
+}
+
+/* Unique days this player filmed, oldest first. */
+function videoDays(playerId) {
+  const set = new Set();
+  for (const s of playerSessions(playerId)) {
+    const k = localDayKey(s.date);
+    if (k) set.add(k);
+  }
+  return [...set].sort();
+}
+
+/* Current run, best ever, and whether today is already done.
+   Yesterday still counts as "alive" so the streak is not lost mid-day. */
+function dailyStreak(playerId) {
+  const days = videoDays(playerId);
+  const have = new Set(days);
+  const today = localDayKey(new Date());
+  const yesterday = shiftDay(today, -1);
+
+  const todayDone = have.has(today);
+  let current = 0;
+  let cursor = todayDone ? today : (have.has(yesterday) ? yesterday : null);
+  while (cursor && have.has(cursor)) {
+    current++;
+    cursor = shiftDay(cursor, -1);
+  }
+
+  let longest = 0, run = 0, prev = null;
+  for (const day of days) {
+    run = (prev && shiftDay(prev, 1) === day) ? run + 1 : 1;
+    if (run > longest) longest = run;
+    prev = day;
+  }
+
+  return {
+    current, longest, todayDone,
+    totalDays: days.length,
+    lastDay: days.length ? days[days.length - 1] : null,
+    atRisk: current > 0 && !todayDone,   // film today or the run ends
+  };
+}
+
+/* Dots for the last N days, newest last - the calendar strip. */
+function streakCalendar(playerId, days = 28) {
+  const have = new Set(videoDays(playerId));
+  const today = localDayKey(new Date());
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const key = shiftDay(today, -i);
+    out.push({ day: key, done: have.has(key), isToday: key === today });
+  }
+  return out;
+}
+
+/* ---------- streak rewards ----------
+   Unlocks use the BEST streak ever, so a reward is never taken away. */
+
+const THEME_UNLOCKS = [
+  { theme: 'midnight', label: 'Midnight', needs: 0 },
+  { theme: 'court', label: 'Court', needs: 3 },
+  { theme: 'clean', label: 'Clean', needs: 7 },
+];
+
+function themeUnlockState(playerId) {
+  const best = playerId ? dailyStreak(playerId).longest : 0;
+  return THEME_UNLOCKS.map(t => ({ ...t, unlocked: best >= t.needs, best }));
+}
+
+function themeIsUnlocked(playerId, theme) {
+  const row = themeUnlockState(playerId).find(t => t.theme === theme);
+  return row ? row.unlocked : true;
+}
+
+const STREAK_BADGES = [
+  { days: 3, icon: '🔥', label: '3-day run' },
+  { days: 7, icon: '⚡', label: 'Full week' },
+  { days: 14, icon: '💎', label: 'Two weeks' },
+  { days: 30, icon: '👑', label: 'A month' },
+];
+
+/* Team leaderboard. Works entirely from local roster data - no accounts
+   needed - so a coach's device can rank the squad today. */
+function streakLeaderboard() {
+  return state.players
+    .filter(p => p.status === 'roster')
+    .map(p => {
+      const st = dailyStreak(p.id);
+      const lv = playerXP(p.id);
+      return { player: p, current: st.current, longest: st.longest, days: st.totalDays, level: lv.level, xp: lv.xp, rank: lv.rank };
+    })
+    .sort((a, b) => b.current - a.current || b.longest - a.longest || b.xp - a.xp);
+}
+
 /* ---------- player level, rank and skill tiers ----------
    Points come from doing the work (filming, playing) AND from getting better,
    so a hard-working beginner still climbs. Everything is derived from data

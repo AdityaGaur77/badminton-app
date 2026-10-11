@@ -2,10 +2,10 @@
    Keeps the app loading in gyms with bad wifi once it's been opened once.
    Only same-origin GETs are handled; AI provider calls pass through untouched. */
 
-const CACHE = 'shuttleiq-v6-20';
+const CACHE = 'shuttleiq-v6-21';
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.json', './icon.svg',
-  './js/track.js', './js/data.js', './js/store.js', './js/analytics.js', './js/charts.js', './js/ai.js', './js/app.js',
+  './js/track.js', './js/data.js', './js/auth.js', './js/store.js', './js/analytics.js', './js/charts.js', './js/ai.js', './js/app.js',
 ];
 
 self.addEventListener('install', e => {
