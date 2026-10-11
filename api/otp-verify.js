@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 /* Checks the 6-digit code with Twilio Verify. Only Twilio can approve it,
    so guessing in the browser gets you nowhere. */
 
@@ -10,12 +12,11 @@ function twilioConfig() {
 
 /* Never store or return a full phone number - keep a one-way id instead. */
 function phoneId(phone) {
-  const crypto = require('crypto');
   const salt = process.env.PHONE_ID_SALT || 'shuttleiq-phone';
   return 'p:' + crypto.createHash('sha256').update(salt + phone).digest('hex').slice(0, 24);
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') { res.status(405).json({ ok: false, error: 'Use POST' }); return; }
 
@@ -50,4 +51,4 @@ module.exports = async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: 'Could not check the code.' });
   }
-};
+}

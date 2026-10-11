@@ -9,7 +9,7 @@ function twilioConfig() {
   return sid && token && service ? { sid, token, service } : null;
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') { res.status(405).json({ ok: false, error: 'Use POST' }); return; }
 
@@ -39,4 +39,4 @@ module.exports = async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: 'Could not send the code.' });
   }
-};
+}

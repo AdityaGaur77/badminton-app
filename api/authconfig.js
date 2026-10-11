@@ -2,7 +2,7 @@
    Safe to be public: the Google client id is meant to be public, and no
    secret is ever returned. */
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
   const phoneReady = Boolean(
@@ -13,4 +13,4 @@ module.exports = async (req, res) => {
     googleClientId,
     phone: phoneReady,
   });
-};
+}

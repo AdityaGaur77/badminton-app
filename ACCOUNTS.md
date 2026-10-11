@@ -75,6 +75,13 @@ are not switched on. Nothing silently fails.
 | 14 days | Two-weeks badge |
 | 30 days | A-month badge |
 
+## Note on package.json
+
+The repo now has `package.json` with `"type": "module"`, added by the Vercel
+Web Analytics pull request. That makes every `.js` an ES module, so the files
+in `api/` use `import`/`export default`, not `require`/`module.exports`.
+Keep it that way or Vercel will fail to start them.
+
 ## Files
 
 | File | Job |

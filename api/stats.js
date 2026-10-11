@@ -1,7 +1,7 @@
 /* Returns the analytics summary. The password lives ONLY here, in a Vercel
    environment variable, so it is never shipped to the browser. */
 
-const { redisConfig, pipeline } = require('./_store');
+import { redisConfig, pipeline } from './_store.js';
 
 const MAX_DAYS = 60;
 
@@ -12,7 +12,7 @@ function safeEqual(a, b) {
   return diff === 0;
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') {
     res.status(405).json({ ok: false, error: 'Use POST' });
@@ -71,4 +71,4 @@ module.exports = async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: 'Could not read analytics: ' + err.message });
   }
-};
+}

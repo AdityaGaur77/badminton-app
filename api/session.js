@@ -2,7 +2,7 @@
    Verification happens here, never in the browser, so a hand-made token
    cannot claim someone else's streak. */
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') { res.status(405).json({ ok: false, error: 'Use POST' }); return; }
 
@@ -38,4 +38,4 @@ module.exports = async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: 'Sign-in check failed.' });
   }
-};
+}

@@ -1,12 +1,12 @@
 /* Records ONE anonymous event. No names, no player data, no personal data.
    Fails quietly: analytics must never break the app for a player. */
 
-const { redisConfig, pipeline, today } = require('./_store');
+import { redisConfig, pipeline, today } from './_store.js';
 
 const MAX_EVENT_LEN = 40;
 const SAFE_EVENT = /^[a-z0-9_]+$/;
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') {
     res.status(405).json({ ok: false, error: 'Use POST' });
@@ -45,4 +45,4 @@ module.exports = async (req, res) => {
     // Never surface storage trouble to a player mid-practice.
     res.status(200).json({ ok: true, stored: false });
   }
-};
+}
