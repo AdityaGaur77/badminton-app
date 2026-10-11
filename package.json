@@ -1,0 +1,25 @@
+{
+  "name": "shuttleiq",
+  "version": "1.0.0",
+  "description": "An AI-powered badminton tool for players **and** coaches: analyze gameplay footage with AI, track every player's matches and form, score tryout prospects, get position recommendations, and build rosters.",
+  "main": "index.html",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 8000",
+    "test": "echo \"No tests configured\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AdityaGaur77/badminton-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AdityaGaur77/badminton-app/issues"
+  },
+  "homepage": "https://github.com/AdityaGaur77/badminton-app#readme",
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
+  }
+}
