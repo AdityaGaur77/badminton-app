@@ -1,2 +1,5 @@
 # local Claude Code session config — not part of the app
 .claude/
+
+# Node.js dependencies
+node_modules/
