@@ -37,6 +37,7 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 
 ### Setup
 - Works fully without an API key (all team management + local analytics).
+- **Zero-setup AI (recommended).** Put one Gemini key in the Vercel env var `GEMINI_API_KEY` and every visitor can analyse straight away with nothing to type — no Supabase or database needed. When the shared daily limit runs out, each player is offered a free key of their own and carries on without losing their clip. See `AI-SERVER.md`.
 - For AI features, add a key in Settings — the **Free setups** buttons prefill everything except the key:
   - **Google Gemini** (recommended) — key from aistudio.google.com, no card needed. The only free option that reads your **actual video** rather than still frames. Default model is `gemini-flash-latest` (an alias, so it won't break when Google retires pinned versions).
     - **Free-tier limit: roughly 20 AI requests per day, per model.** Every analysis, comparison, coach note and match brief counts as one. Switching model in Settings gives a fresh daily allowance. Settings shows how many you've used today.

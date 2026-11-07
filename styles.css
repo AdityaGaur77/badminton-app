@@ -1429,3 +1429,37 @@ body.has-demo { padding-top: 38px; }
   letter-spacing: -0.01em;
   color: var(--ink);
 }
+
+/* hero becomes two columns, art beside the headline */
+.hero-x {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 48px;
+  align-items: center;
+}
+.hero-x .hero-copy { min-width: 0; }
+.hero-x .hero-art { color: var(--art-line); min-width: 0; }
+.hero-x .hero-art svg { width: 100%; height: auto; display: block; }
+
+@media (max-width: 860px) {
+  .hero-x { grid-template-columns: 1fr; gap: 30px; padding-bottom: 5vh; }
+  .hero-x .hero-art { max-width: 420px; }
+}
+
+/* out of free analyses -> bring your own key */
+.quota-wall { border-color: var(--accent); }
+.quota-wall .qw-tag {
+  display: inline-block;
+  font: 600 11px/1 var(--mono, inherit);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--accent);
+  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  margin-bottom: 12px;
+}
+.quota-wall h3 { margin: 0 0 8px; }
+.quota-wall .qw-steps { margin: 10px 0 16px; padding-left: 20px; line-height: 1.7; }
+.quota-wall .qw-field { display: block; margin: 0 0 14px; font-weight: 600; }
+.quota-wall .qw-field input { margin-top: 6px; }

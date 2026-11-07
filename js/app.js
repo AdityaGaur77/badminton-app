@@ -492,23 +492,87 @@ function playerLink(id) {
 
 /* ---------- landing / login / coach gate ---------- */
 
+/* ---------- out of free analyses: offer your own key ---------- */
+
+function quotaWallHTML(msg) {
+  return `
+  <div class="card quota-wall">
+    <div class="qw-tag">Free analyses used up</div>
+    <h3>Keep going with your own key</h3>
+    <p class="muted" style="margin:0 0 14px">${esc(msg || '')}</p>
+    <p style="margin:0 0 6px">A Google Gemini key is <b>free</b> and takes about a minute to get. It is saved on this device only, and it is never sent to us.</p>
+    <ol class="qw-steps">
+      <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with Google.</li>
+      <li>Press <b>Create API key</b>. No card is needed.</li>
+      <li>Copy it and paste it below.</li>
+    </ol>
+    <label class="qw-field">Gemini API key
+      <input id="qw-key" type="password" autocomplete="off" spellcheck="false" placeholder="AIza…">
+    </label>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="qw-save">Save key and analyse</button>
+      <a class="btn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Get a free key</a>
+    </div>
+    <p class="muted small" style="margin:12px 0 0">About 500 analyses a day on the free tier. Change or remove the key any time in Settings.</p>
+  </div>`;
+}
+
+function wireQuotaWall(root, retry) {
+  const input = root.querySelector('#qw-key');
+  const save = root.querySelector('#qw-save');
+  if (!input || !save) return;
+  const go = () => {
+    if (!useOwnGeminiKey(input.value)) { toast('Paste your key first'); input.focus(); return; }
+    track('own_key_added');
+    toast('Key saved — analysing');
+    retry();
+  };
+  save.addEventListener('click', go);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  input.focus();
+}
+
 function renderLanding() {
   const points = [
     ['01', 'Film', 'One minute of real rallies, straight from your phone.'],
     ['02', 'Analyse', 'Scored feedback with the exact frame of every mistake.'],
     ['03', 'Improve', 'Streaks, skill grades and a team leaderboard.'],
   ];
+
+  // the court, with a shuttle arcing over the net
+  const courtArt = `
+    <svg viewBox="0 0 340 250" fill="none" aria-hidden="true">
+      <rect x="12" y="14" width="316" height="222" rx="2" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="14" x2="36" y2="236" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <line x1="304" y1="14" x2="304" y2="236" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <line x1="12" y1="38" x2="328" y2="38" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <line x1="12" y1="212" x2="328" y2="212" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <line x1="128" y1="14" x2="128" y2="236" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <line x1="212" y1="14" x2="212" y2="236" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <line x1="12" y1="125" x2="128" y2="125" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <line x1="212" y1="125" x2="328" y2="125" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <line x1="170" y1="8" x2="170" y2="242" stroke="currentColor" stroke-width="3"/>
+      <path d="M42 198 C 112 56, 212 48, 290 92" stroke="var(--art-accent)" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
+      <g transform="translate(290 92) rotate(38)">
+        <path d="M0 0l7 -18h-14z" fill="var(--bg)" stroke="var(--art-accent)" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="0" cy="3.5" r="4" fill="var(--art-accent)"/>
+      </g>
+    </svg>`;
+
   VIEW.innerHTML = `
   <div class="landing">
     <div class="hero-x">
-      <div class="hero-kicker">ShuttleIQ &middot; Team badminton</div>
-      <h1 class="hero-title">COACH<br>LIKE A<br><span class="hero-accent">PRO PROGRAM</span></h1>
-      <p class="lead">Film a rally. Get real coaching. Score tryouts, track every player, and pick lineups with evidence.</p>
-      <div class="btn-row" style="margin:0">
-        <a class="btn btn-primary btn-lg" href="#/login">Start as a player</a>
-        <a class="btn btn-lg" href="#/coach">Coach login</a>
+      <div class="hero-copy">
+        <div class="hero-kicker">ShuttleIQ &middot; Team badminton</div>
+        <h1 class="hero-title">COACH<br>LIKE A<br><span class="hero-accent">PRO PROGRAM</span></h1>
+        <p class="lead">Film a rally. Get real coaching. Score tryouts, track every player, and pick lineups with evidence.</p>
+        <div class="btn-row" style="margin:0">
+          <a class="btn btn-primary btn-lg" href="#/login">Start as a player</a>
+          <a class="btn btn-lg" href="#/coach">Coach login</a>
+        </div>
+        <p class="hero-trust"><b>Free</b> &middot; no setup &middot; your data stays on your device &middot; <a href="#/guide">how it works</a></p>
       </div>
-      <p class="hero-trust"><b>Free</b> &middot; no accounts needed &middot; your data stays on your device &middot; <a href="#/guide">how it works</a></p>
+      <div class="hero-art">${courtArt}</div>
     </div>
 
     <div class="step-grid">
@@ -517,7 +581,7 @@ function renderLanding() {
           <div class="step-num">${n}</div>
           <h3>${head}</h3>
           <p>${esc(body)}</p>
-        </div>`).join('')}
+        </div>`).join("")}
     </div>
 
     <div class="strip">
@@ -2275,8 +2339,16 @@ function renderAnalyze(_, params) {
       }));
     } catch (err) {
       hideProgress();
-      progressBox.hidden = false;
-      statusEl.textContent = 'Analysis failed: ' + err.message;
+      if (sharedKeyExhausted(err.message)) {
+        // The shared key is spent. Hand the player a way to keep going now,
+        // rather than telling them to come back tomorrow.
+        progressBox.hidden = true;
+        results.innerHTML = quotaWallHTML(err.message);
+        wireQuotaWall(results, () => runAnalysis(false));
+      } else {
+        progressBox.hidden = false;
+        statusEl.textContent = 'Analysis failed: ' + err.message;
+      }
     } finally {
       goBtn.disabled = false;
     }
@@ -3280,7 +3352,7 @@ function renderSettings() {
       ${def.needsBaseUrl ? `<label>Base URL<input type="url" id="ai-baseurl" value="${esc(s.baseUrl)}" placeholder="${esc(def.defaultBaseUrl)}"></label>` : ''}
     </div>
     ${provider === 'server'
-      ? `<p class="small muted">This option uses the key stored on your server, so there is nothing to type here. To use your <b>own</b> key instead, pick <b>Google (Gemini)</b> in the Provider box above.</p>`
+      ? `<p class="small muted">This is the default. It uses the one key the coach put on the server, so players type nothing and can analyse straight away. There is a daily limit shared by everyone. When it runs out, the app offers each player a free key of their own, or you can pick <b>Google (Gemini)</b> above and paste one now.</p>`
       : `<label>API key<input type="password" id="ai-key" value="${esc(s.apiKey)}" placeholder="Paste your key" autocomplete="off"></label>`}
     ${provider === 'server' ? '' : '<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer"><input type="checkbox" id="ai-key-show" style="width:auto;margin:0"> Show key</label>'}
     <p class="small muted" style="margin-top:6px">${esc(def.help)}</p>
@@ -3344,6 +3416,7 @@ function renderSettings() {
   document.getElementById('ai-provider').addEventListener('change', e => {
     saveAI(); // keep whatever was typed — switching provider shouldn't eat an unsaved key
     s.provider = e.target.value;
+    s.providerChosen = true; // a human picked this; stop auto-switching it
     s.model = ''; // model names don't carry over between providers
     saveState();
     renderSettings();
@@ -3489,6 +3562,9 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 // ask the browser not to evict clips/team data under storage pressure
 navigator.storage?.persist?.().catch(() => {});
+
+// First run: pick the AI that this site can actually serve.
+autoPickProvider().catch(() => {});
 
 window.addEventListener('hashchange', route);
 route();

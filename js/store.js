@@ -6,7 +6,8 @@ const LEGACY_KEY = 'shuttleiq_v5';
 
 const DEFAULT_STATE = {
   settings: {
-    provider: 'anthropic', // 'anthropic' | 'gemini' | 'openai'
+    provider: 'server',    // 'server' (shared key) | 'anthropic' | 'gemini' | 'openai'
+    providerChosen: false, // true once a human picks one in Settings
     apiKey: '',
     model: '',             // '' = use the provider's default model
     baseUrl: '',           // OpenAI-compatible endpoints only
@@ -64,6 +65,7 @@ function mergeState(parsed) {
   return {
     settings: {
       provider: str(s.provider, base.settings.provider),
+      providerChosen: s.providerChosen === true,
       apiKey: str(s.apiKey),
       model: str(s.model),
       baseUrl: str(s.baseUrl),

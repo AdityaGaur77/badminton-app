@@ -150,3 +150,30 @@ inputs) is the honest answer, not a different free provider.
 This is the **other** way round from a personal key: here *you* pay the
 quota for the whole team. That is what the limits are for. If the team grows,
 raise `AI_DAILY_TOTAL` only when you know the quota can take it.
+
+---
+
+## The default key, and what happens when it runs out
+
+Set `GEMINI_API_KEY` in Vercel and that is the whole setup. **No Supabase, no database.**
+Vercel environment variables *are* the app secret store.
+
+What a new visitor gets:
+
+1. They open the site. The app asks `/api/authconfig` whether a shared key exists.
+2. If one does, the AI provider is already set to **Free team model** — they type nothing.
+   They pop in a video and press Analyse.
+3. If the site has **no** shared key, the app quietly switches them to Google (Gemini)
+   so Settings shows them a key box instead of a dead option.
+
+When the shared key hits a limit, `/api/ai` answers 429 with a plain sentence
+("You have used your 10 free analyses for today"). The Analyze page catches that
+and shows a **Keep going with your own key** panel: three steps, one paste box,
+and the analysis restarts the moment the key is saved. The key is stored on that
+device only; the player is now on their own free Gemini tier (about 500 a day) and
+never touches the shared pool again.
+
+Failures that are *not* about limits (network, bad clip, empty reply) keep the old
+error line. The app does not ask for a key when a key would not help.
+
+Once a player picks a provider by hand, the app stops auto-switching it.

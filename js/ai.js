@@ -462,6 +462,13 @@ async function callTeamServer(parts, maxTokens) {
   return data.text;
 }
 
+/* Why the shared key stopped working. Only these cases are worth offering the
+   player their own key for - a network blip or a bad clip is not. */
+const OUT_OF_SHARED = /used your|used all|slow down a moment|not set up yet|usage store|check the usage limit|quota|rate limit|too many requests|429/i;
+function sharedKeyExhausted(msg) {
+  return state.settings.provider === 'server' && OUT_OF_SHARED.test(String(msg || ''));
+}
+
 let lastServerRemaining = null;
 function serverCallsLeft() { return lastServerRemaining; }
 
@@ -759,4 +766,26 @@ function demoAnalysis(focus) {
       { timestamp: '0:52', type: 'positive', title: 'Committed follow-through', body: 'Sample positive: full swings rather than tentative pushes — real analysis will confirm which shots this applies to.', tip: 'Keep swinging through contact on clears and smashes.' },
     ],
   };
+}
+
+/* Move this device off the shared key and onto the player's own Gemini key. */
+function useOwnGeminiKey(key) {
+  const clean = String(key || '').trim();
+  if (!clean) return false;
+  state.settings.provider = 'gemini';
+  state.settings.providerChosen = true;
+  state.settings.apiKey = clean;
+  state.settings.model = AI_PROVIDERS.gemini.defaultModel;
+  state.settings.baseUrl = '';
+  saveState();
+  return true;
+}
+
+/* First run: if this site has no shared key, point new players at Gemini so
+   Settings shows them a key box instead of a dead "free model" option. */
+async function autoPickProvider() {
+  if (state.settings.providerChosen) return;
+  if (state.settings.provider !== 'server') return;
+  const srv = await serverAiStatus();
+  if (!srv.ready) { state.settings.provider = 'gemini'; saveState(); }
 }
