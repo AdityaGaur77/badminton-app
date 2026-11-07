@@ -70,6 +70,31 @@ Each limit has its own plain message, like
 The app blocks video for this model instead of sending it and failing.
 
 
+
+## A default key, so anyone can just open the app and play
+
+You cannot put a key in the app itself. The app is a static site, so a key
+inside it is public - anyone can read it and spend your quota.
+
+The safe version is the same proxy: put **your** key on the server, and
+players need nothing at all.
+
+| Name | Value |
+|---|---|
+| `GEMINI_API_KEY` | your Gemini key |
+| `AI_PROXY_MODEL` | `gemini-flash-lite-latest` |
+
+Then Vercel → Redeploy, and in the app pick **Settings → AI coach → Free
+team model**. Players just open the app and film. The limits in this file
+protect the key.
+
+Gemini is tried first, NVIDIA second, so whichever key you set is used.
+
+### One limit of the shared key
+The proxy sends **still frames, not whole video**, because a Vercel function
+cannot take a large upload. A coach using their **own** key in the browser
+still gets full video, which reads footwork better.
+
 ## Picking a free model — the numbers that actually matter
 
 Two limits decide everything. Requests per day (RPD), and tokens per minute

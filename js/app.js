@@ -230,7 +230,7 @@ function noteLogoTap(e) {
   sessionSet(LOGO_TAP_KEY, JSON.stringify(taps));
 }
 
-const THEME_LABELS = { midnight: 'Midnight', court: 'Court', clean: 'Clean' };
+const THEME_LABELS = { midnight: 'Operator', court: 'Court', clean: 'Clean' };
 
 function setTheme(name) {
   // players earn themes with streaks; a coach always has all of them
@@ -493,50 +493,38 @@ function playerLink(id) {
 /* ---------- landing / login / coach gate ---------- */
 
 function renderLanding() {
-  const check = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>';
-  const courtArt = `
-    <svg viewBox="0 0 340 244" fill="none" aria-hidden="true">
-      <rect x="10" y="10" width="320" height="224" rx="8" stroke="currentColor" stroke-width="2.5"/>
-      <line x1="34" y1="10" x2="34" y2="234" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
-      <line x1="306" y1="10" x2="306" y2="234" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
-      <line x1="10" y1="34" x2="330" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
-      <line x1="10" y1="210" x2="330" y2="210" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
-      <line x1="128" y1="10" x2="128" y2="234" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
-      <line x1="212" y1="10" x2="212" y2="234" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
-      <line x1="128" y1="122" x2="10" y2="122" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
-      <line x1="212" y1="122" x2="330" y2="122" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
-      <line x1="170" y1="6" x2="170" y2="238" stroke="currentColor" stroke-width="3"/>
-      <path d="M40 196 C 110 60, 210 52, 288 88" stroke="var(--art-accent)" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
-      <g transform="translate(288 88) rotate(38)">
-        <path d="M0 0l7 -18h-14z" fill="var(--bg)" stroke="var(--art-accent)" stroke-width="2" stroke-linejoin="round"/>
-        <circle cx="0" cy="3.5" r="4" fill="var(--art-accent)"/>
-      </g>
-    </svg>`;
   const points = [
-    'AI feedback on 60-second clips',
-    'Live-ranked tryout scoreboard',
-    'Win/loss and form tracking',
-    'Position fit & team depth chart',
-    'One-tap lineup suggestions',
-    'Works offline · installs on phones',
+    ['01', 'Film', 'One minute of real rallies, straight from your phone.'],
+    ['02', 'Analyse', 'Scored feedback with the exact frame of every mistake.'],
+    ['03', 'Improve', 'Streaks, skill grades and a team leaderboard.'],
   ];
   VIEW.innerHTML = `
   <div class="landing">
-    <div class="hero">
-      <div class="hero-copy">
-        <div class="hero-kicker">ShuttleIQ · Team badminton</div>
-        <h1>Run your team like a pro program.</h1>
-        <p class="lead">Film a rally and get AI coaching. Score tryouts as they happen. Know every player's form — and pick lineups with receipts.</p>
-        <div class="btn-row" style="margin:0">
-          <a class="btn btn-primary btn-lg" href="#/login">Enter as player</a>
-          <a class="btn btn-lg" href="#/coach">Coach login</a>
-        </div>
-        <p class="hero-trust"><b>Free</b> · no accounts · your data stays on this device · <a href="#/guide">How it works</a></p>
+    <div class="hero-x">
+      <div class="hero-kicker">ShuttleIQ &middot; Team badminton</div>
+      <h1 class="hero-title">COACH<br>LIKE A<br><span class="hero-accent">PRO PROGRAM</span></h1>
+      <p class="lead">Film a rally. Get real coaching. Score tryouts, track every player, and pick lineups with evidence.</p>
+      <div class="btn-row" style="margin:0">
+        <a class="btn btn-primary btn-lg" href="#/login">Start as a player</a>
+        <a class="btn btn-lg" href="#/coach">Coach login</a>
       </div>
-      <div class="hero-art">${courtArt}</div>
+      <p class="hero-trust"><b>Free</b> &middot; no accounts needed &middot; your data stays on your device &middot; <a href="#/guide">how it works</a></p>
     </div>
-    <div class="hero-points">
-      ${points.map(p => `<div class="point">${check}${p}</div>`).join('')}
+
+    <div class="step-grid">
+      ${points.map(([n, head, body]) => `
+        <div class="step-x">
+          <div class="step-num">${n}</div>
+          <h3>${head}</h3>
+          <p>${esc(body)}</p>
+        </div>`).join('')}
+    </div>
+
+    <div class="strip">
+      <div><b>60s</b><span>clip length</span></div>
+      <div><b>6</b><span>skills graded</span></div>
+      <div><b>18</b><span>drills built in</span></div>
+      <div><b>0</b><span>accounts required</span></div>
     </div>
   </div>`;
 }
@@ -3269,12 +3257,15 @@ function renderSettings() {
         <datalist id="ai-models">${def.models.map(m => `<option value="${m}">`).join('')}</datalist></label>`}
       ${def.needsBaseUrl ? `<label>Base URL<input type="url" id="ai-baseurl" value="${esc(s.baseUrl)}" placeholder="${esc(def.defaultBaseUrl)}"></label>` : ''}
     </div>
-    ${provider === 'server' ? '' : `<label>API key<input type="password" id="ai-key" value="${esc(s.apiKey)}" placeholder="Paste your key" autocomplete="off"></label>`}
+    ${provider === 'server'
+      ? `<p class="small muted">This option uses the key stored on your server, so there is nothing to type here. To use your <b>own</b> key instead, pick <b>Google (Gemini)</b> in the Provider box above.</p>`
+      : `<label>API key<input type="password" id="ai-key" value="${esc(s.apiKey)}" placeholder="Paste your key" autocomplete="off"></label>`}
     ${provider === 'server' ? '' : '<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer"><input type="checkbox" id="ai-key-show" style="width:auto;margin:0"> Show key</label>'}
     <p class="small muted" style="margin-top:6px">${esc(def.help)}</p>
     <div class="btn-row">
       <button class="btn btn-primary btn-sm" id="ai-save">Save</button>
       <button class="btn btn-sm" id="ai-test">Test key</button>
+      ${s.apiKey ? '<button class="btn btn-danger btn-sm" id="ai-clear">Forget saved key</button>' : ''}
       <span class="small muted" id="ai-status"></span>
     </div>
     <p class="small muted">The key is stored only in this browser and sent only to the provider above. It is stripped from exported backups. On a shared device, clear it when you're done.</p>
@@ -3373,6 +3364,14 @@ function renderSettings() {
     document.getElementById('ai-status').textContent = preset.note;
   }));
   document.getElementById('ai-save').addEventListener('click', () => { saveAI(); toast('AI settings saved'); });
+  document.getElementById('ai-clear')?.addEventListener('click', () => {
+    if (!confirm('Forget the key saved in this browser?')) return;
+    s.apiKey = '';
+    s.aiUsage = null;
+    saveState();
+    toast('Saved key removed');
+    renderSettings();
+  });
   document.getElementById('ai-test').addEventListener('click', async () => {
     saveAI();
     const status = document.getElementById('ai-status');
