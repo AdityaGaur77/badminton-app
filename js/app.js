@@ -3216,22 +3216,24 @@ function renderSettings() {
     <p class="small muted">Powers video analysis, pro comparison, and AI coach notes. Everything else works without it.</p>
     <div class="btn-row" style="margin-top:4px">
       <span class="small muted">Free setups:</span>
+      <button class="btn btn-sm" data-ai-preset="server">Free team model</button>
       <button class="btn btn-sm" data-ai-preset="gemini">Google Gemini</button>
       <button class="btn btn-sm" data-ai-preset="openrouter">OpenRouter</button>
       <button class="btn btn-sm" data-ai-preset="groq">Groq</button>
     </div>
     <p class="small" style="color:var(--link)"><b>Gemini is the one to pick.</b> It's the only free option that reads your actual video — it sees footwork and timing, not just frozen poses. The others analyse still frames, which is useful but blind to movement.</p>
+    <p class="small" id="ai-server-status"></p>
     <p class="small muted"><b>Free-tier limit:</b> Gemini allows roughly <b>20 AI requests per day per model</b>. Every analysis, comparison, coach note and match brief counts as one. If you run out, switch to another model in the box above — each has its own daily allowance.${aiCallsToday() ? ` You've used <b>${aiCallsToday()}</b> today on this device.` : ''}</p>
     <div class="form-grid">
       <label>Provider<select id="ai-provider">
         ${Object.entries(AI_PROVIDERS).map(([k, v]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${v.label}</option>`).join('')}
       </select></label>
-      <label>Model<input type="text" id="ai-model" list="ai-models" value="${esc(s.model)}" placeholder="${esc(def.defaultModel)}">
-        <datalist id="ai-models">${def.models.map(m => `<option value="${m}">`).join('')}</datalist></label>
+      ${provider === 'server' ? '' : `<label>Model<input type="text" id="ai-model" list="ai-models" value="${esc(s.model)}" placeholder="${esc(def.defaultModel)}">
+        <datalist id="ai-models">${def.models.map(m => `<option value="${m}">`).join('')}</datalist></label>`}
       ${def.needsBaseUrl ? `<label>Base URL<input type="url" id="ai-baseurl" value="${esc(s.baseUrl)}" placeholder="${esc(def.defaultBaseUrl)}"></label>` : ''}
     </div>
-    <label>API key<input type="password" id="ai-key" value="${esc(s.apiKey)}" placeholder="Paste your key" autocomplete="off"></label>
-    <label class="small" style="display:flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer"><input type="checkbox" id="ai-key-show" style="width:auto;margin:0"> Show key</label>
+    ${provider === 'server' ? '' : `<label>API key<input type="password" id="ai-key" value="${esc(s.apiKey)}" placeholder="Paste your key" autocomplete="off"></label>`}
+    ${provider === 'server' ? '' : '<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer"><input type="checkbox" id="ai-key-show" style="width:auto;margin:0"> Show key</label>'}
     <p class="small muted" style="margin-top:6px">${esc(def.help)}</p>
     <div class="btn-row">
       <button class="btn btn-primary btn-sm" id="ai-save">Save</button>
@@ -3282,8 +3284,9 @@ function renderSettings() {
   });
 
   const saveAI = () => {
-    s.model = document.getElementById('ai-model').value.trim();
-    s.apiKey = document.getElementById('ai-key').value.trim();
+    s.model = document.getElementById('ai-model')?.value.trim() || '';
+    const keyBox = document.getElementById('ai-key');
+    if (keyBox) s.apiKey = keyBox.value.trim();
     const baseEl = document.getElementById('ai-baseurl');
     if (baseEl) s.baseUrl = baseEl.value.trim();
     saveState();
@@ -3295,9 +3298,20 @@ function renderSettings() {
     saveState();
     renderSettings();
   });
-  document.getElementById('ai-key-show').addEventListener('change', e => {
+  document.getElementById('ai-key-show')?.addEventListener('change', e => {
     document.getElementById('ai-key').type = e.target.checked ? 'text' : 'password';
   });
+
+  // report whether the free team model is live on this site
+  const serverLine = document.getElementById('ai-server-status');
+  if (serverLine) {
+    serverAiStatus().then(st => {
+      const left = serverCallsLeft();
+      serverLine.innerHTML = st.ready
+        ? `<b style="color:var(--win)">Free team model is live.</b> About ${st.perDay} analyses per person per day, counted on the server.${left != null ? ` You have ${left} left today.` : ''}`
+        : '<b style="color:var(--warn)">Free team model is not set up yet.</b> See <b>AI-SERVER.md</b> - it needs an NVIDIA key and the usage store on the server, never in a browser.';
+    }).catch(() => { serverLine.textContent = ''; });
+  }
 
   VIEW.querySelectorAll('[data-set-theme]').forEach(b => b.addEventListener('click', () => {
     setTheme(b.dataset.setTheme);
@@ -3305,6 +3319,7 @@ function renderSettings() {
   }));
 
   const AI_PRESETS = {
+    server: { provider: 'server', model: '', baseUrl: '', note: 'Using the free model on your own site. Nobody needs a key. Each player gets a few analyses per day.' },
     gemini: { provider: 'gemini', model: '', baseUrl: '', note: 'Now paste a free key from aistudio.google.com and hit Test.' },
     openrouter: { provider: 'openai', model: 'google/gemini-2.0-flash-exp:free', baseUrl: 'https://openrouter.ai/api/v1', note: 'Now paste a key from openrouter.ai — any vision model tagged :free works.' },
     groq: { provider: 'openai', model: 'meta-llama/llama-4-scout-17b-16e-instruct', baseUrl: 'https://api.groq.com/openai/v1', note: 'Now paste a free key from console.groq.com and hit Test.' },

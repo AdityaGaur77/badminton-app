@@ -40,6 +40,7 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 - For AI features, add a key in Settings — the **Free setups** buttons prefill everything except the key:
   - **Google Gemini** (recommended) — key from aistudio.google.com, no card needed. The only free option that reads your **actual video** rather than still frames. Default model is `gemini-flash-latest` (an alias, so it won't break when Google retires pinned versions).
     - **Free-tier limit: roughly 20 AI requests per day, per model.** Every analysis, comparison, coach note and match brief counts as one. Switching model in Settings gives a fresh daily allowance. Settings shows how many you've used today.
+  - **Free team model (NVIDIA)** — the coach puts one key on the server and nobody else needs one. Rate limited per person, per minute and per day, counted server-side. Reads still frames, not video. See `AI-SERVER.md`.
   - **OpenRouter** — key from openrouter.ai; pick any vision model tagged `:free`.
   - **Groq** — key from console.groq.com; fast free tier with Llama vision models.
   - Paid/other: **Anthropic Claude** (console.anthropic.com) or any OpenAI-compatible endpoint via a custom base URL.

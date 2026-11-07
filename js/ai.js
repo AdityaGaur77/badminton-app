@@ -6,6 +6,14 @@
    Each provider adapter reshapes it into that API's request format. */
 
 const AI_PROVIDERS = {
+  server: {
+    // The key lives on the server, so a player needs nothing at all.
+    label: 'Free team model (no key needed)',
+    defaultModel: '',
+    models: [],
+    serverSide: true,
+    help: 'Runs through your own site, so no key is stored in anyone browser. Limited to a few analyses per person per day. Reads still frames, not full video.',
+  },
   anthropic: {
     label: 'Anthropic (Claude)',
     defaultModel: 'claude-sonnet-5',
@@ -44,7 +52,20 @@ function aiConfig() {
 }
 
 function hasApiKey() {
+  // the free team model needs no key from the player
+  if (state.settings.provider === 'server') return true;
   return Boolean(state.settings.apiKey);
+}
+
+/* Does this site actually have the free model switched on? */
+let SERVER_AI = null;
+function serverAiStatus() {
+  if (SERVER_AI) return SERVER_AI;
+  SERVER_AI = fetch('/api/authconfig', { headers: { Accept: 'application/json' } })
+    .then(r => (r.ok ? r.json() : {}))
+    .then(c => ({ ready: Boolean(c.aiProxy), perDay: c.aiDailyPerUser || 10 }))
+    .catch(() => ({ ready: false, perDay: 0 }));
+  return SERVER_AI;
 }
 
 /* ---------- video frame sampling ---------- */
@@ -184,6 +205,7 @@ async function extractKeyFrames(videoEl, frameCount = 8, onProgress) {
 const INLINE_VIDEO_LIMIT = 12 * 1024 * 1024; // ~16MB once base64-encoded
 
 function canSendNativeVideo(blob) {
+  // only Gemini reads real video; everything else gets key frames
   return aiConfig().provider === 'gemini' && blob && blob.size > 0 && blob.size <= INLINE_VIDEO_LIMIT;
 }
 
@@ -253,9 +275,10 @@ function aiCallsToday() {
 
 async function callAI(parts, maxTokens = 3000, { onRetry } = {}) {
   const cfg = aiConfig();
-  if (!cfg.apiKey) throw new Error('No API key set. Add one in Settings.');
+  if (cfg.provider !== 'server' && !cfg.apiKey) throw new Error('No API key set. Add one in Settings.');
   noteAiCall();
   const send = () => {
+    if (cfg.provider === 'server') return callTeamServer(parts, maxTokens);
     if (cfg.provider === 'anthropic') return callAnthropic(cfg, parts, maxTokens);
     if (cfg.provider === 'gemini') return callGemini(cfg, parts, maxTokens);
     return callOpenAI(cfg, parts, maxTokens);
@@ -373,6 +396,24 @@ async function callOpenAI(cfg, parts, maxTokens) {
   if (!text) throw new Error('The AI returned an empty reply.');
   return text;
 }
+
+/* Calls our own /api/ai, which holds the provider key and enforces the limit. */
+async function callTeamServer(parts, maxTokens) {
+  let visitor = 'nodev';
+  try { visitor = localStorage.getItem('siq_visitor') || 'nodev'; } catch { /* private mode */ }
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parts, maxTokens, visitor }),
+  });
+  const data = await res.json().catch(() => ({ ok: false, error: 'The server sent a reply we could not read.' }));
+  if (!res.ok || !data.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+  if (typeof data.remaining === 'number') lastServerRemaining = data.remaining;
+  return data.text;
+}
+
+let lastServerRemaining = null;
+function serverCallsLeft() { return lastServerRemaining; }
 
 /* Cheap end-to-end check that the key/model/endpoint actually work. */
 async function testAIKey() {
