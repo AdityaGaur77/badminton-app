@@ -15,7 +15,7 @@ const DEFAULT_STATE = {
     recoveryHash: '',      // hash of the one-time recovery code (resets a forgotten passcode)
     theme: 'midnight',     // 'midnight' | 'court' | 'clean'
     lastBackup: '',        // ISO date of the last exported backup, for the reminder
-    aiUsage: null,         // {date, count} — today's AI request tally vs the free-tier cap
+    aiUsage: null,         // {date, count, byModel:{}} — today's AI tally vs the free-tier cap
   },
   players: [],   // {id, name, year, hand, status:'roster'|'tryout'|'cut', availability, tryoutScores, aiNote, notes, createdAt}
   matches: [],   // {id, playerId, partnerId, date, opponent, discipline, result, score, ratings, notes, context}

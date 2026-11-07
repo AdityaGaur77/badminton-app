@@ -2037,6 +2037,14 @@ function renderAnalyze(_, params) {
   <div class="page-head"><h1>Analyze</h1><p class="muted">One minute of play → scored, timestamped coaching</p></div>
   ${hasApiKey() ? '' : `<div class="notice">No API key set${coach ? ' — add one in <a href="#/settings">Settings</a>' : ' — ask your coach to add one in Settings'}. You can still record and save clips, and preview a sample analysis.</div>`}
 
+  <div class="notice notice-info">
+    <b>Before you film:</b> your clip is sent to the AI company to be analysed.
+    On a <b>free</b> plan they may keep it and use it to improve their own
+    products. Do not film anyone who has not agreed to that.
+    ${coach ? ' <a href="#/guide">More in the guide</a>.' : ''}
+  </div>
+  <div id="an-quota" class="small muted"></div>
+
   <div class="grid2">
     <div class="card">
       <div class="card-title">Record (auto-stops at 1:00)</div>
@@ -2207,7 +2215,30 @@ function renderAnalyze(_, params) {
     pctEl.textContent = '';
   }
 
+  // show how much of today's free allowance is left
+  (function showQuota() {
+    const box = document.getElementById('an-quota');
+    if (!box || !hasApiKey()) return;
+    const q = quotaStatus();
+    if (q.cap == null) return;
+    const warn = q.left <= 3;
+    box.innerHTML = warn
+      ? `<b style="color:var(--warn)">${q.left} analysis${q.left === 1 ? '' : 'es'} left today</b> on ${esc(q.model)}.`
+        + (q.cap <= 20 ? ' A "lite" model in Settings allows about 500 a day.' : ' More tomorrow.')
+      : `${q.used} of about ${q.cap} free analyses used today on ${esc(q.model)}.`;
+  })();
+
   async function runAnalysis(demo) {
+    // ask once, per device, before anything is ever sent away
+    if (!demo) {
+      let agreed = false;
+      try { agreed = localStorage.getItem('siq_ai_consent') === '1'; } catch { agreed = false; }
+      if (!agreed) {
+        const ok = confirm('This clip is sent to the AI company to be analysed.\n\nOn a free plan they may keep it and use it to improve their products.\n\nOnly continue if everyone filmed agreed to that.');
+        if (!ok) return;
+        try { localStorage.setItem('siq_ai_consent', '1'); } catch { /* private mode */ }
+      }
+    }
     const goBtn = document.getElementById(demo ? 'an-demo' : 'an-go');
     const results = document.getElementById('an-results');
     goBtn.disabled = true;
@@ -2229,7 +2260,10 @@ function renderAnalyze(_, params) {
           id: uid(), playerId, date: new Date().toISOString(),
           label: document.getElementById('an-label').value.trim() || `Session ${state.sessions.length + 1}`,
           focus: document.getElementById('an-focus').value,
-          scores: parsed.scores, feedback: parsed.feedback, clipId: currentClipId,
+          scores: parsed.scores, clipId: currentClipId,
+          // stills are shown live only; saving base64 pictures would fill
+          // localStorage within a few analyses
+          feedback: parsed.feedback.map(({ thumb, ...rest }) => rest),
           method: parsed.method, confidence: parsed.confidence,
         });
         saveState();
@@ -2371,11 +2405,13 @@ function renderAnalysisResults(parsed) {
         <div class="fb-item fb-${esc(f.type)}">
           <button type="button" class="fb-row" data-seek="${esc(f.timestamp)}" data-fb="${i}" aria-expanded="false">
             <span class="fb-dot">${icon(f.type)}</span>
+            ${f.thumb ? `<img class="fb-thumb" src="${f.thumb}" alt="" loading="lazy">` : ''}
             <span class="fb-time">${esc(f.timestamp)}</span>
             <span class="fb-title">${esc(f.title)}</span>
             <span class="fb-chev" aria-hidden="true">▾</span>
           </button>
           <div class="fb-detail" id="fb-d-${i}" hidden>
+            ${f.thumb ? `<img class="fb-shot" src="${f.thumb}" alt="The moment at ${esc(f.timestamp)}">` : ''}
             <p>${esc(f.body)}</p>
             ${f.tip ? `<p class="fb-tip"><b>Try this:</b> ${esc(f.tip)}</p>` : ''}
           </div>
@@ -3129,10 +3165,11 @@ function renderGuide() {
     <div class="card">
       <div class="card-title">For players</div>
       ${step(1, 'Sign in as yourself', 'Enter as player → pick your name so your stats and clips are yours.')}
-      ${step(2, 'Film one minute', 'Analyze → Start camera → Record. Prop the phone at the back corner so your whole half-court is in frame. It stops at 60 seconds.')}
-      ${step(3, 'Read the feedback', 'You get 0–100 skill scores plus coaching cards. Tap any card to jump to that exact moment in your clip.')}
-      ${step(4, 'Compare with a pro', 'Compare → pick a pro → paste a YouTube link, or load a downloaded clip for synced slow-motion and an AI breakdown.')}
-      ${step(5, 'Work your weak spots', 'Drills shows the drills matched to your two lowest skills, with a target for each.')}
+      ${step(2, 'Know what is sent', 'Your clip goes to the AI company to be analysed. On a free plan they may keep it and use it to improve their products. Tell your players, and do not film anyone who has not agreed.')}
+      ${step(3, 'Film one minute', 'Analyze → Start camera → Record. Prop the phone at the back corner so your whole half-court is in frame. It stops at 60 seconds.')}
+      ${step(4, 'Read the feedback', 'You get 0–100 skill scores plus coaching cards. Tap any card to jump to that exact moment in your clip.')}
+      ${step(5, 'Compare with a pro', 'Compare → pick a pro → paste a YouTube link, or load a downloaded clip for synced slow-motion and an AI breakdown.')}
+      ${step(6, 'Work your weak spots', 'Drills shows the drills matched to your two lowest skills, with a target for each.')}
     </div>
   </div>
 

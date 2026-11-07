@@ -56,6 +56,32 @@ function aiConfig() {
   return { provider, apiKey: s.apiKey.trim(), model, baseUrl };
 }
 
+/* Free-tier requests per day, by model. The lite models get about 25x the
+   plain flash ones on the same free tier. null means we do not know. */
+const FREE_DAILY_CAPS = {
+  'gemini-flash-lite-latest': 500,
+  'gemini-3.5-flash-lite': 500,
+  'gemini-3.1-flash-lite': 500,
+  'gemini-flash-latest': 20,
+  'gemini-3.8-flash': 20,
+  'gemini-3.6-flash': 20,
+  'gemini-3-flash-preview': 20,
+};
+
+function freeDailyCap(model) {
+  return FREE_DAILY_CAPS[model] != null ? FREE_DAILY_CAPS[model] : null;
+}
+
+/* How much of today's free allowance is gone, for the model in use. */
+function quotaStatus() {
+  const cfg = aiConfig();
+  const cap = freeDailyCap(cfg.model);
+  const used = aiCallsTodayFor(cfg.model);
+  if (cap == null) return { model: cfg.model, used, cap: null, left: null, pct: null };
+  const left = Math.max(0, cap - used);
+  return { model: cfg.model, used, cap, left, pct: Math.round((used / cap) * 100) };
+}
+
 function hasApiKey() {
   // the free team model needs no key from the player
   if (state.settings.provider === 'server') return true;
@@ -266,10 +292,14 @@ function sleep(ms) {
 
 /* Local tally so a coach can see how much of the day's free allowance is gone
    before a player is left waiting mid-practice. */
-function noteAiCall() {
+function noteAiCall(model) {
   const today = todayISO();
   const u = state.settings.aiUsage;
-  state.settings.aiUsage = (u && u.date === today) ? { date: today, count: u.count + 1 } : { date: today, count: 1 };
+  const fresh = !u || u.date !== today;
+  const byModel = fresh ? {} : { ...(u.byModel || {}) };
+  const key = model || aiConfig().model || 'unknown';
+  byModel[key] = (byModel[key] || 0) + 1;
+  state.settings.aiUsage = { date: today, count: (fresh ? 0 : u.count) + 1, byModel };
   saveState();
 }
 
@@ -278,10 +308,17 @@ function aiCallsToday() {
   return u && u.date === todayISO() ? u.count : 0;
 }
 
+/* Calls made today on one specific model - the number the free cap applies to. */
+function aiCallsTodayFor(model) {
+  const u = state.settings.aiUsage;
+  if (!u || u.date !== todayISO()) return 0;
+  return (u.byModel && u.byModel[model]) || 0;
+}
+
 async function callAI(parts, maxTokens = 3000, { onRetry } = {}) {
   const cfg = aiConfig();
   if (cfg.provider !== 'server' && !cfg.apiKey) throw new Error('No API key set. Add one in Settings.');
-  noteAiCall();
+  noteAiCall(cfg.model);
   const send = () => {
     if (cfg.provider === 'server') return callTeamServer(parts, maxTokens);
     if (cfg.provider === 'anthropic') return callAnthropic(cfg, parts, maxTokens);
@@ -322,9 +359,17 @@ async function readJsonResponse(response) {
       // Gemini's free tier is capped per day PER MODEL, so switching model in
       // Settings genuinely buys a fresh allowance — worth telling the user.
       const perDay = /PerDay|per day/i.test(JSON.stringify(payload?.error?.details || ''));
-      msg = perDay
-        ? 'Daily free-tier limit reached for this model (Gemini allows about 20 AI requests per day per model). Switch to another model in Settings for a fresh allowance, or try again tomorrow.'
-        : 'Rate limit reached. Wait a minute and try again, or switch model in Settings. (' + msg + ')';
+      const cfgNow = aiConfig();
+      const cap = freeDailyCap(cfgNow.model);
+      if (perDay) {
+        msg = 'That is your free allowance for today on ' + cfgNow.model
+          + (cap ? ' (about ' + cap + ' a day)' : '') + '. '
+          + (cap && cap <= 20
+            ? 'Switch to a "lite" model in Settings - it allows about 500 a day on the same free key.'
+            : 'Try again tomorrow, or switch model in Settings for a separate allowance.');
+      } else {
+        msg = 'Too many requests in a short time. Wait about a minute and try again - nothing is lost.';
+      }
     } else if (response.status === 401 || response.status === 403) {
       msg = 'The API key was rejected. Check it in Settings. (' + msg + ')';
     } else if (response.status === 503) {
@@ -443,6 +488,45 @@ function parseJsonReply(text) {
   }
 }
 
+/* "1:07" -> 67 seconds. Returns null when it is not a timestamp. */
+function parseTimestamp(ts) {
+  const m = /^(\d{1,2}):(\d{1,2})$/.exec(String(ts || '').trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/* Grab a small still for every coaching point, so the player SEES the moment
+   instead of reading a time code. Works for both the video and the frames
+   path, because the stills are taken from the clip after the model replies. */
+async function attachFeedbackThumbs(videoEl, feedback, onStatus) {
+  if (!videoEl || !Array.isArray(feedback) || !feedback.length) return feedback;
+  const duration = videoEl.duration;
+  if (!duration || !isFinite(duration)) return feedback;
+
+  const canvas = document.createElement('canvas');
+  const scale = videoEl.videoWidth ? Math.min(1, 192 / videoEl.videoWidth) : 1;
+  canvas.width = Math.max(1, Math.round((videoEl.videoWidth || 192) * scale));
+  canvas.height = Math.max(1, Math.round((videoEl.videoHeight || 108) * scale));
+  const ctx = canvas.getContext('2d');
+
+  let done = 0;
+  for (const f of feedback) {
+    const at = parseTimestamp(f.timestamp);
+    done++;
+    if (at == null) continue;
+    const safe = Math.max(0, Math.min(at, duration - 0.05));
+    try {
+      await seekTo(videoEl, safe, 2000);
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      f.thumb = canvas.toDataURL('image/jpeg', 0.6);
+    } catch {
+      /* one missing picture must never fail the analysis */
+    }
+    if (onStatus) onStatus('Grabbing the moments...', 90 + Math.round((done / feedback.length) * 10));
+  }
+  return feedback;
+}
+
 /* ---------- coaching calls ---------- */
 
 const FOCUS_MAP = {
@@ -529,6 +613,7 @@ async function runGameplayAnalysis({ videoEl, blob, focus, onStatus = () => {} }
     onStatus('Preparing your video…', 15);
     try {
       const res = await analyzeGameplayVideo(blob, focus, videoEl?.duration, (msg, pct) => onStatus(msg, pct));
+      await attachFeedbackThumbs(videoEl, res.feedback, onStatus);
       onStatus('Done', 100);
       return res;
     } catch (err) {
@@ -542,6 +627,7 @@ async function runGameplayAnalysis({ videoEl, blob, focus, onStatus = () => {} }
     onStatus('Scanning the clip for the moments with most action…', 5 + Math.round(pct * 0.5)));
   onStatus(`Sending ${frames.length} key moments to the AI coach…`, null);
   const result = await analyzeGameplay(frames, focus, (msg, pct) => onStatus(msg, pct));
+  await attachFeedbackThumbs(videoEl, result.feedback, onStatus);
   onStatus('Done', 100);
   return { ...result, sampling: mode };
 }
