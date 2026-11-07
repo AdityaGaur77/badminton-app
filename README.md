@@ -53,6 +53,8 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 
 - **Usage analytics (optional)** — anonymous counts of visitors and actions. Tap the logo 5 times to reach a password-protected page. Needs two Vercel serverless functions plus an env var; see `ANALYTICS.md`. No names, scores, or video ever leave the device.
 
+- **Body tracking (optional, on device)** — measures court coverage, knee bend, arm extension and more from the clip itself, then gives the AI those numbers as facts. Runs in the browser; no video leaves the device for this. About 15MB downloads once. See `POSE.md`.
+
 ### Files
 | File | Purpose |
 |---|---|

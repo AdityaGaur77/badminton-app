@@ -554,6 +554,24 @@ const OUTPUT_SHAPE = `Return ONLY a JSON object, no markdown fences, with this s
 
 /* Honesty rules matter more than polish here: a confident-sounding note about
    something the model cannot see teaches a student the wrong lesson. */
+/* When the device has measured the body, those numbers are facts and the
+   model must defer to them. This is the whole point of tracking on-device. */
+function measuredBlock(metrics) {
+  if (!metrics) return '';
+  return `
+MEASURED ON THE PLAYER'S DEVICE (body tracking, not your guess - trust these over anything you think you see):
+${JSON.stringify(metrics, null, 1)}
+
+How to read them: knee angle is degrees at the knee, so LOWER means a deeper
+bend; arm extension is degrees at the elbow, so HIGHER means straighter;
+court coverage and distance are percentages of the frame width.
+Body was found in ${metrics.detectionRate}% of sampled frames - if that is
+below 60, say the tracking was patchy and be careful with conclusions.
+Use these numbers in your feedback where they are relevant, and never
+contradict them.
+`;
+}
+
 const HONESTY_RULES = `Rules:
 - 5-9 feedback items, at least one positive.
 - Only describe what is genuinely visible. Never invent a specific error you cannot see.
@@ -563,7 +581,7 @@ const HONESTY_RULES = `Rules:
 - Write for a high-school player: concrete, encouraging, no jargon without explanation.`;
 
 /* Analysis from still frames (any provider). */
-async function analyzeGameplay(frames, focus, onStatus) {
+async function analyzeGameplay(frames, focus, onStatus, metrics) {
   const prompt = `You are an expert badminton coach reviewing gameplay footage. The images are chronological still frames sampled from a short clip — they were chosen at moments of high movement, so they should show shots and rallies.
 
 Frame timestamps:
@@ -572,6 +590,7 @@ ${FOCUS_MAP[focus] || FOCUS_MAP.all}
 
 IMPORTANT: these are still images, so you cannot see timing, speed, or shuttle flight. Comment on what a still can show — body position, racket preparation, contact point, stance, court position, balance — and do not claim to judge timing or rhythm.
 
+${measuredBlock(metrics)}
 ${OUTPUT_SHAPE}
 ${HONESTY_RULES}
 - Every timestamp must be one of the frame timestamps listed above.`;
@@ -585,7 +604,7 @@ ${HONESTY_RULES}
 
 /* Analysis from the actual video (Gemini) — the model sees motion, so it can
    judge timing, footwork sequences and shot preparation properly. */
-async function analyzeGameplayVideo(blob, focus, durationSec, onStatus) {
+async function analyzeGameplayVideo(blob, focus, durationSec, onStatus, metrics) {
   onStatus?.(`Encoding ${Math.round(blob.size / 1048576 * 10) / 10} MB of video…`, 30);
   const videoB64 = await blobToBase64(blob);
   onStatus?.('Uploading to the AI coach — this is the slow part…', null);
@@ -594,6 +613,7 @@ ${FOCUS_MAP[focus] || FOCUS_MAP.all}
 
 Because you can see the video move, assess what stills cannot show: footwork sequence and recovery to base, split-step timing, swing mechanics through contact, shot selection during rallies, and how the player moves between shots.
 
+${measuredBlock(metrics)}
 ${OUTPUT_SHAPE}
 ${HONESTY_RULES}
 - Timestamps must be real moments in the video, formatted M:SS, and within its duration.`;
@@ -609,13 +629,22 @@ ${HONESTY_RULES}
 /* onStatus(message, percent) — percent is 0-100 for work we can actually
    measure, or null while we're waiting on the model (no honest number there). */
 async function runGameplayAnalysis({ videoEl, blob, focus, onStatus = () => {} }) {
+  // Measure the body first, on this device. Never fatal: if it is off or
+  // fails, metrics stays null and everything below behaves as before.
+  let metrics = null;
+  try {
+    metrics = await poseMetrics(videoEl, { onStatus });
+  } catch (err) {
+    console.warn('Body tracking skipped:', err);
+  }
+
   if (canSendNativeVideo(blob)) {
     onStatus('Preparing your video…', 15);
     try {
-      const res = await analyzeGameplayVideo(blob, focus, videoEl?.duration, (msg, pct) => onStatus(msg, pct));
+      const res = await analyzeGameplayVideo(blob, focus, videoEl?.duration, (msg, pct) => onStatus(msg, pct), metrics);
       await attachFeedbackThumbs(videoEl, res.feedback, onStatus);
       onStatus('Done', 100);
-      return res;
+      return { ...res, metrics };
     } catch (err) {
       // payload rejected / too large / model can't take video — fall back cleanly
       onStatus('Video analysis unavailable — falling back to key frames…', 20);
@@ -626,10 +655,10 @@ async function runGameplayAnalysis({ videoEl, blob, focus, onStatus = () => {} }
   const { frames, mode } = await extractKeyFrames(videoEl, 8, pct =>
     onStatus('Scanning the clip for the moments with most action…', 5 + Math.round(pct * 0.5)));
   onStatus(`Sending ${frames.length} key moments to the AI coach…`, null);
-  const result = await analyzeGameplay(frames, focus, (msg, pct) => onStatus(msg, pct));
+  const result = await analyzeGameplay(frames, focus, (msg, pct) => onStatus(msg, pct), metrics);
   await attachFeedbackThumbs(videoEl, result.feedback, onStatus);
   onStatus('Done', 100);
-  return { ...result, sampling: mode };
+  return { ...result, sampling: mode, metrics };
 }
 
 /* Side-by-side comparison: player frames vs pro frames.

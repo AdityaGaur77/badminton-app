@@ -2384,6 +2384,18 @@ function renderAnalysisResults(parsed) {
       </div>
     </div>
 
+    ${parsed.metrics ? `
+      <div class="card-title" style="margin-top:18px">Measured on your device</div>
+      <div class="measure-grid">
+        ${poseReadout(parsed.metrics).map(r => `
+          <div class="measure">
+            <div class="measure-label">${esc(r.label)}</div>
+            <div class="measure-value">${esc(r.value)}</div>
+          </div>`).join('')}
+      </div>
+      <p class="small muted">These are measurements, not opinions. ${parsed.metrics.detectionRate < 60 ? '<b>Your body was only found in ' + parsed.metrics.detectionRate + '% of frames</b>, so treat them loosely - try filming from the back corner with your whole body in shot.' : 'The coaching notes below were given these numbers to work from.'}</p>
+    ` : ''}
+
     <div class="card-title" style="margin-top:18px">Skill grades</div>
     <div class="tier-grid">${tiles}</div>
 
@@ -3227,6 +3239,16 @@ function renderSettings() {
   </div>
 
   <div class="card">
+    <div class="card-title">Body tracking (on device)</div>
+    <p class="small muted">Measures real numbers from the clip - how much court you covered, how deep your knees bend, how far your arm extends - and gives them to the AI as facts instead of letting it guess motion from still pictures.</p>
+    <label class="small" style="display:flex;gap:8px;align-items:center;cursor:pointer">
+      <input type="checkbox" id="pose-toggle" style="width:auto;margin:0" ${state.settings.usePose ? 'checked' : ''}>
+      Measure my body while analysing
+    </label>
+    <p class="small muted" style="margin-top:8px"><b>About 15MB downloads the first time</b>, then it is kept on the device. It runs in your browser, so no video is sent anywhere for this part. It adds roughly 10-30 seconds per clip on a phone.</p>
+  </div>
+
+  <div class="card">
     <div class="card-title">Appearance</div>
     <div class="theme-row">
       ${Object.entries(THEME_LABELS).map(([k, label]) => `
@@ -3340,6 +3362,12 @@ function renderSettings() {
         : '<b style="color:var(--warn)">Free team model is not set up yet.</b> See <b>AI-SERVER.md</b> - it needs an NVIDIA key and the usage store on the server, never in a browser.';
     }).catch(() => { serverLine.textContent = ''; });
   }
+
+  document.getElementById('pose-toggle')?.addEventListener('change', e => {
+    state.settings.usePose = e.target.checked;
+    saveState();
+    toast(e.target.checked ? 'Body tracking on - the first clip downloads the tracker' : 'Body tracking off');
+  });
 
   VIEW.querySelectorAll('[data-set-theme]').forEach(b => b.addEventListener('click', () => {
     setTheme(b.dataset.setTheme);
