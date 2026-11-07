@@ -3223,7 +3223,7 @@ function renderSettings() {
     </div>
     <p class="small" style="color:var(--link)"><b>Gemini is the one to pick.</b> It's the only free option that reads your actual video — it sees footwork and timing, not just frozen poses. The others analyse still frames, which is useful but blind to movement.</p>
     <p class="small" id="ai-server-status"></p>
-    <p class="small muted"><b>Free-tier limit:</b> Gemini allows roughly <b>20 AI requests per day per model</b>. Every analysis, comparison, coach note and match brief counts as one. If you run out, switch to another model in the box above — each has its own daily allowance.${aiCallsToday() ? ` You've used <b>${aiCallsToday()}</b> today on this device.` : ''}</p>
+    <p class="small muted"><b>Free-tier limit:</b> on Gemini this depends on the model. <b>flash-lite gives about 500 analyses a day; plain flash only about 20.</b> Keep the lite model unless you have paid credit. Every analysis, comparison, coach note and match brief counts as one. If you run out, switch to another model in the box above — each has its own daily allowance.${aiCallsToday() ? ` You've used <b>${aiCallsToday()}</b> today on this device.` : ''}</p>
     <div class="form-grid">
       <label>Provider<select id="ai-provider">
         ${Object.entries(AI_PROVIDERS).map(([k, v]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${v.label}</option>`).join('')}

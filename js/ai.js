@@ -24,10 +24,15 @@ const AI_PROVIDERS = {
     // "-latest" aliases track whatever the current model is. Pinned versions
     // get retired for new users (2.5-flash did exactly that), which would break
     // AI features for anyone setting the app up later. Aliases survive that.
+    //
+    // The default is the LITE alias on purpose. On the free tier the plain
+    // "flash" models allow about 20 requests a DAY, while "flash-lite" allows
+    // about 500 - the same free tier, 25x the capacity. A squad filming daily
+    // runs out on flash before lunch.
     label: 'Google (Gemini)',
-    defaultModel: 'gemini-flash-latest',
-    models: ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-pro-latest'],
-    help: 'Get a key at aistudio.google.com (free tier available). Calls go straight to generativelanguage.googleapis.com. Reads your actual video, not just still frames.',
+    defaultModel: 'gemini-flash-lite-latest',
+    models: ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-pro-latest'],
+    help: 'Get a key at aistudio.google.com (free). Reads your actual video, not just still frames. Keep the "lite" model unless you have paid credit: on the free tier lite allows roughly 500 analyses a day, plain flash only about 20.',
   },
   openai: {
     label: 'OpenAI-compatible',

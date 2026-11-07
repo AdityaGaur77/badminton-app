@@ -69,6 +69,57 @@ Each limit has its own plain message, like
 
 The app blocks video for this model instead of sending it and failing.
 
+
+## Picking a free model — the numbers that actually matter
+
+Two limits decide everything. Requests per day (RPD), and tokens per minute
+(TPM). For video, TPM is usually the one that bites.
+
+### Gemini free tier, from the real limits page
+
+| Model family | Requests per minute | Requests per DAY |
+|---|---|---|
+| `flash-lite` | 15 | **about 500** |
+| `flash` | 5 | **about 20** |
+| `pro` | 0 | 0 (not on free) |
+
+Same free tier. **25 times the capacity.** Always pick the lite model unless
+you have paid credit. The app now defaults to `gemini-flash-lite-latest`
+for exactly this reason.
+
+### Why short clips beat long ones
+
+Video burns tokens by the second. A 4-minute clip costs roughly four times a
+1-minute clip, and TPM is 250K a minute. So:
+
+- A 1-minute clip: you can send plenty per minute.
+- A 4-minute clip: only a couple before TPM stops you.
+
+It is not just a quota thing. **Four minutes of footage is mostly standing
+around.** The app already picks the busiest moments, so a minute of real
+rallies gives better coaching than four minutes of walking between points.
+Keep the 60-second cap.
+
+### Cap by requests, not by people
+
+30 players times 3 clips is 90 analyses a day. That fits inside 500 with room
+to spare. So set `AI_DAILY_TOTAL` to what the quota can take, and let the
+player count follow. The limits in this file already do that.
+
+## Privacy warning — read this before launching
+
+**Free tiers log your inputs and may train on them.** Your inputs are videos
+of school students. That applies to Gemini free tier and to NVIDIA free tier.
+NVIDIA's free tier is also described as for study and development, not
+production — check the terms yourself before you launch.
+
+Two things help:
+- Send **key frames instead of full video** where you can.
+- Tell players and parents plainly what is sent and to whom.
+
+If that is not acceptable, a paid tier (which usually does not train on
+inputs) is the honest answer, not a different free provider.
+
 ## Keep in mind
 
 This is the **other** way round from a personal key: here *you* pay the
