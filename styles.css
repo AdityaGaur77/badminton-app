@@ -311,6 +311,54 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   background: var(--header-active-bg);
 }
 
+/* ---------- grouped dropdowns (coach menu) ---------- */
+
+.nav-drop { position: relative; display: inline-flex; }
+.nav-drop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px 6px 13px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--header-dim);
+  font: 600 14px/1.4 inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color var(--speed), background var(--speed);
+}
+.nav-drop-btn svg { width: 13px; height: 13px; stroke-width: 2.4; transition: transform var(--speed); }
+.nav-drop-btn:hover, .nav-drop.open .nav-drop-btn { color: var(--header-ink); background: var(--header-line); }
+.nav-drop-btn.active { color: var(--header-active-ink); background: var(--header-active-bg); }
+.nav-drop.open .nav-drop-btn svg, .nav-drop:focus-within .nav-drop-btn svg { transform: rotate(180deg); }
+.nav-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 80;
+  min-width: 190px;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-2);
+  padding: 6px;
+}
+.nav-drop:hover .nav-menu, .nav-drop:focus-within .nav-menu, .nav-drop.open .nav-menu { display: flex; }
+.nav-menu a {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.nav-menu a:hover { background: var(--card-2); color: var(--ink); text-decoration: none; }
+.nav-menu a.active { color: var(--link); background: var(--accent-soft); }
+.nav-menu .sheet-label { padding: 8px 12px 4px; }
+
 /* ================= bottom tab bar (phones) ================= */
 
 #tabbar {
@@ -372,6 +420,27 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
 #tabbar .sheet-row.active { color: var(--link); background: var(--accent-soft); }
 #tabbar .sheet-row svg { color: var(--muted); }
 #tabbar .sheet-row.active svg { color: var(--link); }
+#tabbar .sheet-label, .sheet-label {
+  padding: 10px 14px 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---------- practice attendance ---------- */
+
+.att-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.att-row:last-child { border-bottom: none; }
+.att-name { font-weight: 650; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 150px; }
+.att-rate { font-weight: 400; }
+.att-seg { display: inline-flex; gap: 3px; background: var(--card-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.att-btn { border: none; background: transparent; color: var(--muted); font: 600 12px/1 inherit; font-family: inherit; padding: 8px 13px; border-radius: 999px; cursor: pointer; transition: background var(--speed), color var(--speed); }
+.att-btn:hover { color: var(--ink-2); }
+.att-btn.on-present { background: var(--win-soft); color: var(--win); }
+.att-btn.on-absent { background: var(--loss-soft); color: var(--loss); }
+.att-btn.on-excused { background: var(--card); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-2, var(--line)); }
 
 /* ================= layout ================= */
 

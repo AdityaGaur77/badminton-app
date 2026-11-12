@@ -3,7 +3,7 @@
    copied and the free quota cannot be drained. This is also the only place a
    rate limit is real - a limit in the browser can simply be deleted. */
 
-import { redisConfig, pipeline, today } from './_store.js';
+import { redisConfig, pipeline, today, clientIp } from './_store.js';
 
 const DEFAULTS = {
   baseUrl: 'https://integrate.api.nvidia.com/v1',
@@ -27,10 +27,10 @@ function limits() {
 }
 
 /* Who is asking. The IP comes from the platform and is far harder to fake
-   than anything the page sends, so it is the main key. */
+   than anything the page sends, so it is the main key. Anonymous "nodev"
+   visitors all share one device bucket, so dropping the id buys nobody headroom. */
 function callerKeys(req, body) {
-  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  const ip = fwd || req.headers['x-real-ip'] || 'noip';
+  const ip = clientIp(req);
   const device = String(body.visitor || '').slice(0, 64) || 'nodev';
   return { ip, device };
 }

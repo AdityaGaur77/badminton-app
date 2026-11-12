@@ -18,12 +18,14 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 ### For players
 - **Analyze** — Record up to 60 seconds from your camera (auto-stops) or upload a clip. The AI returns timestamped coaching cards (critical / suggestion / positive) plus 0–100 scores across Footwork, Smash, Serve, Defense, Net play, and Consistency. Click a card to jump to that moment. Clips can be saved to the library. Without an API key you can preview a clearly-labeled sample analysis (never saved).
   - **How the footage is read.** With **Gemini** the actual video is sent, so the model sees motion — footwork sequences, split-step timing, the swing through contact. With any other provider the app scans the clip for the moments with the most movement and sends those frames, rather than sampling blindly every few seconds. Results say which method was used, report the model's own confidence, and list anything it couldn't assess.
+  - **Share the result.** Every analysis ends with a *Share / save image* button — a score-card PNG of the overall ring, six skill grades and the top coaching point, via the system share sheet or as a download.
 - **Compare** — Pick a pro from the study list (14 players across all disciplines, each with specific technique points to watch for and a YouTube search link), then either paste a YouTube link to watch them side by side, or load a local pro clip for synced slow-mo/frame-step playback and an AI breakdown of the key differences.
 - **Drills** — 18 standard drills (3 per skill, Beginner→Advanced) with concrete descriptions and measurable targets. Linked players see drills recommended from their current weaknesses.
 
 ### For coaches
 - **Live scoring** — Score a match courtside by tapping two giant numbers. Full rally scoring: first to 21, win by 2, hard cap at 30, best of three, undo-a-point, and it survives an accidental refresh. When the match ends it saves straight to the log with the game scores filled in.
 - **Challenge ladder** — The team's internal pecking order. Record a challenge; if the lower-ranked player wins they take that spot and everyone in between shifts down. Both players get the match on their record automatically. Manual ↑/↓ overrides and a printable ladder for the gym wall.
+- **Practice attendance** — mark who showed up with one tap per player per practice. All-time rate per player, one list per date, CSV export for spreadsheets.
 - **Availability** — Mark players injured or away. Auto-suggest never picks them, and the roster warns you if one is placed anyway.
 - **Head to head** — Compare any two players: overlaid skill radars, win rates, form, position fit, ladder rank, and their record against each other.
 - **Dashboard** — Team pulse: streak/slump alerts, in-form players with sparklines, latest matches, headline stats, and a backup reminder when your data is at risk.
@@ -37,11 +39,11 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 
 ### Setup
 - Works fully without an API key (all team management + local analytics).
-- **Zero-setup AI (recommended).** Put one Gemini key in the Vercel env var `GEMINI_API_KEY` and every visitor can analyse straight away with nothing to type — no Supabase or database needed. When the shared daily limit runs out, each player is offered a free key of their own and carries on without losing their clip. See `AI-SERVER.md`.
+- **Zero-setup AI (recommended).** Put one Gemini key in the Vercel env var `GEMINI_API_KEY` and every visitor can analyse straight away with nothing to type. The shared daily limit is counted on the server, so it can't be reset by refreshing. When the shared daily limit runs out, each player is offered a free key of their own and carries on without losing their clip. Needs the usage store connected too — see *Deploying to Vercel* below.
 - For AI features, add a key in Settings — the **Free setups** buttons prefill everything except the key:
   - **Google Gemini** (recommended) — key from aistudio.google.com, no card needed. The only free option that reads your **actual video** rather than still frames. Default model is `gemini-flash-latest` (an alias, so it won't break when Google retires pinned versions).
     - **Free-tier limit: roughly 20 AI requests per day, per model.** Every analysis, comparison, coach note and match brief counts as one. Switching model in Settings gives a fresh daily allowance. Settings shows how many you've used today.
-  - **Free team model (NVIDIA)** — the coach puts one key on the server and nobody else needs one. Rate limited per person, per minute and per day, counted server-side. Reads still frames, not video. See `AI-SERVER.md`.
+  - **Free team model (NVIDIA)** — the coach puts one key on the server and nobody else needs one. Rate limited per person, per minute and per day, counted server-side. Reads still frames, not video.
   - **OpenRouter** — key from openrouter.ai; pick any vision model tagged `:free`.
   - **Groq** — key from console.groq.com; fast free tier with Llama vision models.
   - Paid/other: **Anthropic Claude** (console.anthropic.com) or any OpenAI-compatible endpoint via a custom base URL.
@@ -52,18 +54,19 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 - Settings also has JSON export/import for backups, a **guided tour**, and a storage meter.
 - **Works offline & installs like an app** — once opened over http(s), a service worker caches the app (gym wifi won't take it down), and on a phone you can "Add to Home Screen" for a standalone app experience.
 
-- **Usage analytics (optional)** — anonymous counts of visitors and actions. Tap the logo 5 times to reach a password-protected page. Needs two Vercel serverless functions plus an env var; see `ANALYTICS.md`. No names, scores, or video ever leave the device.
+- **Usage analytics (optional)** — anonymous counts of visitors and actions. Tap the logo 5 times to reach a password-protected page. Set `ANALYTICS_PASSWORD` in Vercel; counts live in the same Upstash Redis store the shared-AI proxy uses. No names, scores, or video ever leave the device.
 
-- **Body tracking (optional, on device)** — measures court coverage, knee bend, arm extension and more from the clip itself, then gives the AI those numbers as facts. Runs in the browser; no video leaves the device for this. About 15MB downloads once. See `POSE.md`.
+- **Body tracking (optional, on device)** — measures court coverage, knee bend, arm extension and more from the clip itself, then gives the AI those numbers as facts. Runs in the browser; no video leaves the device for this. About 15MB downloads once.
 
 ### Files
 | File | Purpose |
 |---|---|
 | `index.html` | App shell, CSP, favicon, script loading |
+| `vercel.json` | Security headers for every response (nosniff, DENY framing, HSTS, permissions-policy) |
 | `manifest.json` / `icon.svg` / `sw.js` | Installable PWA + offline caching (network-first) |
 | `styles.css` | Light design system: tokens, cards, tables, forms, print rules |
 | `js/track.js` | Anonymous usage counter (fails silently offline) |
-| `api/*.js` | Serverless analytics endpoints (see `ANALYTICS.md`) |
+| `api/*.js` | Serverless endpoints: usage counter + admin stats, shared-AI proxy, sign-in (see *Deploying to Vercel*) |
 | `js/data.js` | Drill library (18 drills) + pro study list (14 players) |
 | `js/store.js` | localStorage persistence (with v5 migration), roles/passcode, IndexedDB clip library, redacted export/import, sample data |
 | `js/analytics.js` | Form, position fit, drills, roster suggestions, pair chemistry, depth chart, practice plan, head-to-head |
@@ -75,7 +78,7 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 
 ## Publishing & safety
 
-This is a **static, local-first** webapp — no server, no database. To publish, drop the folder on any static host (GitHub Pages, Netlify, Vercel, Cloudflare Pages) or open `index.html` directly. No build step, no dependencies.
+A **static, local-first** webapp plus a handful of serverless functions (`api/*.js`) for the shared-AI proxy, usage analytics and optional sign-in. The app itself still opens straight from `index.html` with no build step; the functions are only for the hosted deployment. To publish, drop the folder on any static host (GitHub Pages, Netlify, Vercel, Cloudflare Pages) — or Vercel, which runs the functions too.
 
 Security choices:
 - **Content-Security-Policy** — scripts only from the app's own origin, no inline handlers, no objects/embeds; network calls limited to HTTPS.
@@ -90,12 +93,31 @@ A TS build would add a compile step and node toolchain, making this *harder* to 
 
 ---
 
+## Deploying to Vercel (the parts only the site owner can do)
+
+The app is static; the shared-AI proxy, usage analytics and phone sign-in run on Vercel serverless functions and read two stores. Until the store is connected, the shared model refuses to run (by design — an uncounted free key is a drained key).
+
+1. **Connect Upstash Redis** — Vercel dashboard → your project → **Storage** → **Upstash Redis** → Create/Connect. This sets `KV_REST_API_URL` and `KV_REST_API_TOKEN`. *Redeploy.*
+2. **Turn on the shared model** — set `GEMINI_API_KEY` (free key from aistudio.google.com; a `gemini-flash-lite-latest` default is used, ~500 free calls/day) or `NVIDIA_API_KEY`. Optional tuning: `AI_DAILY_PER_USER` (default 10), `AI_DAILY_TOTAL` (default 200), `AI_PER_MINUTE` (default 3).
+3. **Turn on analytics** — set `ANALYTICS_PASSWORD` to anything long. Tap the logo 5 times in the live app to open the stats page. Without it, the proxy still runs but stats return 401.
+4. **(Optional) Google sign-in** — set `GOOGLE_CLIENT_ID` from console.cloud.google.com (add your site's origin). **(Optional) Phone sign-in** — set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`. Both sign-ins require the Upstash store; SMS is capped per day per person and per phone number.
+
+Known limit, stated honestly: the shared daily cap is per calendar day for everyone combined, and per IP / per device for each user. Someone determined enough to randomise both can push the shared cap — the real fix is accounts (see roadmap). The per-person daily cap cannot be gamed without a new device id, and the per-IP cap cannot be gamed without a new IP.
+
+## Changes in 6.4 (review pass)
+
+- **Live matches save themselves** the moment the result is decided; ratings merge afterwards. The "tap Save match" step is gone.
+- **Coach menu grouped** — 13 top-level items became 7: Dashboard, Score, Team ▾, Review ▾, Analyze ▾, Guide, Settings (attendance added under Team).
+- **Practice attendance** — `#/attendance`: one tap per player per practice, all-time attendance rates, CSV export.
+- **Share / save image** — every analysis now produces a shareable score-card image (uses the system share sheet, or downloads a PNG).
+- **Sign-in buttons hide when not configured** instead of sitting disabled; no more "see ACCOUNTS.md".
+- **Privacy page** (`#/privacy`) with plain-English data flow and school-consent guidance; guide and landing link to it.
+- **Honest AI notices** — server-mode sites say whether the shared model is actually on, instead of "No API key set".
+- **Server doors rate-limited** — track (per IP), stats/admin (per IP + wrong-password lockout), phone OTP start/verify (per IP and per phone). All counters live in the Upstash store.
+- **Security headers** via `vercel.json` (nosniff, frame-deny, HSTS, permissions-policy, COOP).
+- **Old versions removed from the deploy** — `v5/`, `antigravity/`, `shuttleiq_v*.html` and the developer setup notes are no longer in the repo (history keeps them).
+- **Team sync with a join code** is intentionally *not* done — it needs a server-side per-team store and is the next milestone. Until then, players on their own phones see the empty state; the coach's device is the record.
+
 ## Older versions
 
-| Where | Notes |
-|---|---|
-| `v5/` | v5 "Team Edition" — same feature core with the cinematic monochrome dark theme, Claude-only AI |
-| `shuttleiq_v4_publish.html` | Solo analyzer — fixed API calls, import/export, score breakdowns |
-| `shuttleiq_v3.html` | Intermediate iteration |
-| `shuttleiq_v2.html` | Original version |
-| `antigravity/` | Earlier multi-file experiment |
+Removed from the repo and the deploy in 6.4 (they were publicly reachable). If you ever need them back they live in git history (`git log --all -- 'v5/**'`), but they are unmaintained and should not be republished.

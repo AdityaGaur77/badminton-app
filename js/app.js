@@ -61,9 +61,11 @@ const ROUTES = {
   ladder: renderLadder,
   vs: renderVersus,
   settings: renderSettings,
+  attendance: renderAttendance,
+  privacy: renderPrivacy,
 };
 
-const COACH_ONLY = new Set(['players', 'matches', 'tryouts', 'rosters', 'insights', 'settings', 'recovery', 'score', 'vs']);
+const COACH_ONLY = new Set(['players', 'matches', 'tryouts', 'rosters', 'insights', 'settings', 'recovery', 'score', 'vs', 'attendance']);
 const NEEDS_ROLE = new Set([...COACH_ONLY, 'analyze', 'compare', 'team', 'drills', 'player', 'ladder', 'leaders']);
 
 function parseHash() {
@@ -122,6 +124,8 @@ function navIcon(name) {
     score: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14M7 10.5h1.5M6.25 9.25v2.5M15.5 10.5H17"/>',
     ladder: '<path d="M7 3v18M17 3v18M7 7h10M7 12h10M7 17h10"/>',
     vs: '<path d="M4 6l3 6-3 6M20 6l-3 6 3 6"/><path d="M12 4v16"/>',
+    attend: '<rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M9 3v4M15 3v4M3.5 10h17"/><path d="M9.5 15.5l2 2 3.5-3.5"/>',
+    caret: '<path d="M6 9l6 6 6-6"/>',
   };
   return `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 }
@@ -132,23 +136,33 @@ function buildNav() {
   const tab = (k, label, ic) => `<a class="tab" data-nav="${k}" href="#/${k === 'home' ? '' : k}">${navIcon(ic)}<span>${label}</span></a>`;
   const sheetRow = (k, label, ic) => `<a class="sheet-row" data-nav="${k}" href="#/${k}">${navIcon(ic)}${label}</a>`;
   let links = '', right = '', tabs = '';
+  const drop = (label, items) => `<span class="nav-drop">
+      <button class="nav-drop-btn" aria-expanded="false" aria-haspopup="true">${esc(label)}${navIcon('caret')}</button>
+      <span class="nav-menu" role="menu">${items.map(([k, t]) => `<a role="menuitem" data-nav="${k}" href="#/${k}">${esc(t)}</a>`).join('')}</span>
+    </span>`;
   if (role === 'coach') {
+    // Grouped: 7 top-level entries instead of 13. Direct: Dashboard, Score,
+    // Guide, Settings. The rest live in three small menus.
     links = [
-      link('home', 'Dashboard'), link('score', 'Score'), link('players', 'Players'),
-      link('matches', 'Matches'), link('ladder', 'Ladder'), link('tryouts', 'Tryouts'),
-      link('rosters', 'Rosters'), link('insights', 'Insights'), link('vs', 'Head to head'),
-      link('analyze', 'Analyze'), link('compare', 'Compare'), link('guide', 'Guide'), link('settings', 'Settings'),
+      link('home', 'Dashboard'), link('score', 'Score'),
+      drop('Team', [['players', 'Players'], ['attendance', 'Attendance'], ['ladder', 'Ladder'], ['rosters', 'Rosters'], ['tryouts', 'Tryouts']]),
+      drop('Review', [['matches', 'Match log'], ['insights', 'Insights'], ['vs', 'Head to head']]),
+      drop('Analyze', [['analyze', 'Analyze'], ['compare', 'Compare']]),
+      link('guide', 'Guide'), link('settings', 'Settings'),
     ].join('');
     right = `<button class="nav-role" data-logout>Log out</button>`;
     tabs = tab('home', 'Home', 'home') + tab('score', 'Score', 'score')
       + tab('players', 'Players', 'players') + tab('matches', 'Matches', 'matches')
       + `<button class="tab" id="tab-more" aria-expanded="false">${navIcon('more')}<span>More</span></button>`
       + `<div class="more-sheet" id="more-sheet" hidden>`
-      + sheetRow('ladder', 'Ladder', 'ladder') + sheetRow('tryouts', 'Tryouts', 'tryouts')
-      + sheetRow('rosters', 'Rosters', 'rosters') + sheetRow('insights', 'Insights', 'insights')
-      + sheetRow('vs', 'Head to head', 'vs') + sheetRow('analyze', 'Analyze', 'analyze')
-      + sheetRow('compare', 'Compare', 'compare') + sheetRow('guide', 'Guide', 'guide')
-      + sheetRow('settings', 'Settings', 'settings')
+      + '<div class="sheet-label">Team</div>'
+      + sheetRow('ladder', 'Ladder', 'ladder') + sheetRow('attendance', 'Attendance', 'attend')
+      + sheetRow('tryouts', 'Tryouts', 'tryouts') + sheetRow('rosters', 'Rosters', 'rosters')
+      + '<div class="sheet-label">Review</div>'
+      + sheetRow('insights', 'Insights', 'insights') + sheetRow('vs', 'Head to head', 'vs')
+      + '<div class="sheet-label">Analyze & help</div>'
+      + sheetRow('analyze', 'Analyze', 'analyze') + sheetRow('compare', 'Compare', 'compare')
+      + sheetRow('guide', 'Guide', 'guide') + sheetRow('settings', 'Settings', 'settings')
       + `</div>`;
   } else if (role === 'student') {
     links = [link('home', 'Home'), link('team', 'Team'), link('ladder', 'Ladder'), link('analyze', 'Analyze'), link('compare', 'Compare'), link('drills', 'Drills'), link('guide', 'Guide')].join('');
@@ -186,10 +200,35 @@ function buildNav() {
     sheet.hidden = !open;
     document.getElementById('tab-more').setAttribute('aria-expanded', String(open));
   });
+  // Coach menus: tap to toggle (hover already opens them on desktop).
+  // Escape or a tap elsewhere closes them.
+  NAV.querySelectorAll('.nav-drop-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const drop = btn.closest('.nav-drop');
+      const open = !drop.classList.contains('open');
+      NAV.querySelectorAll('.nav-drop.open').forEach(d => { d.classList.remove('open'); d.querySelector('.nav-drop-btn').setAttribute('aria-expanded', 'false'); });
+      if (open) { drop.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); }
+    });
+  });
 }
+
+document.addEventListener('click', e => {
+  if (e.target.closest('.nav-drop')) return;
+  document.querySelectorAll('.nav-drop.open').forEach(d => { d.classList.remove('open'); d.querySelector('.nav-drop-btn')?.setAttribute('aria-expanded', 'false'); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.nav-drop.open').forEach(d => { d.classList.remove('open'); d.querySelector('.nav-drop-btn')?.setAttribute('aria-expanded', 'false'); });
+});
 
 function markNav(name) {
   document.querySelectorAll('a[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === name));
+  // light up the parent button when the active route lives inside its menu
+  document.querySelectorAll('.nav-drop').forEach(d => {
+    const on = !!d.querySelector('a[data-nav].active');
+    d.classList.toggle('child-active', on);
+    d.querySelector('.nav-drop-btn')?.classList.toggle('active', on);
+  });
   // light up "More" when the active route lives inside its sheet
   const moreBtn = document.getElementById('tab-more');
   if (moreBtn) moreBtn.classList.toggle('active', !!document.querySelector(`#more-sheet a[data-nav="${name}"]`));
@@ -570,7 +609,7 @@ function renderLanding() {
           <a class="btn btn-primary btn-lg" href="#/login">Start as a player</a>
           <a class="btn btn-lg" href="#/coach">Coach login</a>
         </div>
-        <p class="hero-trust"><b>Free</b> &middot; no setup &middot; your data stays on your device &middot; <a href="#/guide">how it works</a></p>
+        <p class="hero-trust"><b>Free</b> &middot; no setup &middot; your data stays on your device &middot; <a href="#/guide">how it works</a> &middot; <a href="#/privacy">privacy</a></p>
       </div>
       <div class="hero-art">${courtArt}</div>
     </div>
@@ -610,13 +649,13 @@ function renderLogin() {
       <h2>Sign in</h2>
       <p class="muted small">Sign in to keep your streak, badges and growth on every device. Guest works too, but it stays on this one.</p>
 
-      <div class="login-options">
-        <button class="btn login-opt" id="login-google">${gIcon}<span>Continue with Google</span></button>
-        <button class="btn login-opt" id="login-phone">📱<span>Use my phone number</span></button>
+      <div class="login-options" id="login-options" hidden>
+        <button class="btn login-opt" id="login-google" aria-label="Continue with Google">${gIcon}<span>Continue with Google</span></button>
+        <button class="btn login-opt" id="login-phone" aria-label="Use your phone number">📱<span>Use my phone number</span></button>
       </div>
       <p class="small muted" id="login-note"></p>
 
-      <div class="or-line"><span>or</span></div>
+      <div class="or-line" id="login-or" hidden><span>or</span></div>
 
       ${roster.length ? `
         <label>On this team's device? Pick your name
@@ -629,7 +668,7 @@ function renderLogin() {
         <button class="btn" id="login-guest">Continue as guest</button>
         <a class="btn" href="#/coach">I'm the coach</a>
       </div>
-      <p class="small muted">Your team data stays in this browser. Signing in only links your streak to you.</p>
+      <p class="small muted">Your team data stays in this browser. Signing in only links your streak to you. <a href="#/privacy">Privacy</a></p>
     </div>
   </div>`;
 
@@ -644,26 +683,25 @@ function renderLogin() {
     location.hash = '#/';
   });
 
-  // Google and phone need server setup. Ask the server what is switched on,
-  // and say so plainly instead of showing a button that quietly fails.
+  // Google and phone need server setup. When they are not switched on we
+  // hide the buttons entirely — a button that can never work helps nobody.
   const note = document.getElementById('login-note');
+  const options = document.getElementById('login-options');
+  const orLine = document.getElementById('login-or');
   const gBtn = document.getElementById('login-google');
   const pBtn = document.getElementById('login-phone');
-  gBtn.disabled = true;
-  pBtn.disabled = true;
-  note.textContent = 'Checking which sign-in methods are switched on…';
 
   authConfig().then(cfg => {
-    gBtn.disabled = !cfg.google;
-    pBtn.disabled = !cfg.phone;
-    const off = [];
-    if (!cfg.google) off.push('Google');
-    if (!cfg.phone) off.push('phone');
-    note.innerHTML = off.length
-      ? `${off.join(' and ')} sign-in ${off.length > 1 ? 'are' : 'is'} not switched on yet — see <b>ACCOUNTS.md</b>. Everything below works now.`
-      : 'Pick whichever is easiest.';
+    gBtn.hidden = !cfg.google;
+    pBtn.hidden = !cfg.phone;
+    const anyOn = cfg.google || cfg.phone;
+    options.hidden = !anyOn;
+    orLine.hidden = !anyOn;
+    note.textContent = anyOn ? 'Pick whichever is easiest.' : '';
   }).catch(() => {
-    note.textContent = 'Sign-in services are unreachable here. Use a name or guest below.';
+    options.hidden = true;
+    orLine.hidden = true;
+    note.textContent = 'Sign-in services are unreachable here. Use your name or guest below.';
   });
 
   gBtn.addEventListener('click', async () => {
@@ -2084,10 +2122,13 @@ function renderAnalyze(_, params) {
   currentClipId = null;
   const fromTryout = coach && preselect && getPlayer(preselect)?.status === 'tryout';
 
+  const serverMode = state.settings.provider === 'server';
   VIEW.innerHTML = `
   ${fromTryout ? '<p class="small no-print"><a href="#/tryouts">← Back to tryouts</a></p>' : ''}
   <div class="page-head"><h1>Analyze</h1><p class="muted">One minute of play → scored, timestamped coaching</p></div>
-  ${hasApiKey() ? '' : `<div class="notice">No API key set${coach ? ' — add one in <a href="#/settings">Settings</a>' : ' — ask your coach to add one in Settings'}. You can still record and save clips, and preview a sample analysis.</div>`}
+  ${serverMode
+      ? '<div class="notice" id="an-server-notice">Checking the shared team model…</div>'
+      : (state.settings.apiKey ? '' : `<div class="notice">AI analysis isn't switched on yet${coach ? ' — add a free key in <a href="#/settings">Settings</a> or have the admin connect the team model' : ' — ask your coach'}. You can still record and save clips, and preview a sample analysis.</div>`)}
 
   <div class="notice notice-info">
     <b>Before you film:</b> your clip is sent to the AI company to be analysed.
@@ -2267,6 +2308,21 @@ function renderAnalyze(_, params) {
     pctEl.textContent = '';
   }
 
+  // be honest about the shared model: say whether it is actually on here
+  (function showServerState() {
+    const box = document.getElementById('an-server-notice');
+    if (!box) return;
+    serverAiStatus().then(st => {
+      box.innerHTML = st.ready
+        ? `The free team model is on — roughly <b>${esc(st.perDay)} analyses per person per day</b>, shared fairly between everyone.`
+        : (coach
+            ? 'The team model isn\'t switched on for this site yet — the admin needs to connect it in Vercel (see the README in the repo). You can still preview a sample analysis.'
+            : 'AI analysis isn\'t switched on this site yet — ask your coach. You can still record clips and preview a sample analysis.');
+    }).catch(() => {
+      box.textContent = 'Could not reach the team model — check the connection. You can still preview a sample analysis.';
+    });
+  })();
+
   // show how much of today's free allowance is left
   (function showQuota() {
     const box = document.getElementById('an-quota');
@@ -2322,7 +2378,19 @@ function renderAnalyze(_, params) {
       }
       hideProgress();
       track(demo ? 'analyze_demo' : (parsed.method === 'video' ? 'analyze_video' : 'analyze_frames'));
-      results.innerHTML = renderAnalysisResults(parsed);
+      // who/what is this analysis of — used on the share image
+      const playerSel = document.getElementById('an-player');
+      const shareMeta = {
+        team: state.settings.teamName,
+        player: playerSel && playerSel.tagName === 'SELECT' ? (playerSel.value ? playerName(playerSel.value) : null) : (me ? me.name : null),
+        label: document.getElementById('an-label')?.value.trim() || '',
+        date: new Date().toISOString(),
+      };
+      results.innerHTML = renderAnalysisResults(parsed, shareMeta);
+      results.querySelector('#an-share')?.addEventListener('click', () => {
+        track('analysis_shared');
+        shareAnalysisImage(parsed, shareMeta);
+      });
       results.querySelectorAll('[data-seek]').forEach(el => el.addEventListener('click', () => {
         const [m, sec] = el.dataset.seek.split(':').map(Number);
         if (!isNaN(m)) videoEl.currentTime = m * 60 + sec;
@@ -2397,7 +2465,7 @@ function renderAnalyze(_, params) {
   }
 }
 
-function renderAnalysisResults(parsed) {
+function renderAnalysisResults(parsed, meta) {
   const ICONS = {
     positive: '<path d="M4 12.5l5 5L20 6.5"/>',
     critical: '<path d="M12 7v6"/><circle cx="12" cy="17" r="1.1" fill="currentColor" stroke="none"/>',
@@ -2490,7 +2558,187 @@ function renderAnalysisResults(parsed) {
         </div>`).join('')}
     </div>
     ${notSeen}
+    <div class="btn-row no-print" style="margin-top:18px">
+      <button class="btn" id="an-share">Share / save image</button>
+      <span class="small muted" style="align-self:center">A score card you can post — no account needed.</span>
+    </div>
   </div>`;
+}
+
+/* ---------- share image (canvas-drawn score card) ---------- */
+
+function rrPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function wrapLines(ctx, text, maxWidth) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (line && ctx.measureText(test).width > maxWidth) { lines.push(line); line = w; } else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function shareAnalysisImage(parsed, meta = {}) {
+  const W = 1080, H = 1350;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const BG = '#0d0d0d', LINE = '#2b2925', INK = '#f5f1e8', MUTED = '#a39e93', ACC = '#fc5102', BAR = '#24231f';
+  const FONT = '"Segoe UI", -apple-system, Roboto, Arial, sans-serif';
+
+  // background + court-arc decoration
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(252, 81, 2, 0.09)';
+  ctx.lineWidth = 90;
+  ctx.beginPath(); ctx.arc(W * 0.94, H * 0.06, 460, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(W * 0.06, H * 0.94, 560, 0, Math.PI * 2); ctx.stroke();
+
+  // wordmark row
+  ctx.fillStyle = ACC;
+  ctx.font = '800 46px ' + FONT;
+  ctx.textAlign = 'left';
+  ctx.fillText('SHUTTLEIQ', 78, 112);
+  ctx.fillStyle = MUTED;
+  ctx.font = '600 21px ' + FONT;
+  ctx.fillText('A I   G A M E   R E P O R T', 78, 148);
+  if (parsed.demo) {
+    const tag = 'SAMPLE';
+    ctx.font = '800 20px ' + FONT;
+    const tw = ctx.measureText(tag).width + 36;
+    ctx.fillStyle = ACC;
+    rrPath(ctx, W - 78 - tw, 88, tw, 40, 20);
+    ctx.fill();
+    ctx.fillStyle = '#141414';
+    ctx.textAlign = 'center';
+    ctx.fillText(tag, W - 78 - tw / 2, 115);
+    ctx.textAlign = 'left';
+  } else {
+    ctx.fillStyle = MUTED;
+    ctx.font = '600 22px ' + FONT;
+    ctx.textAlign = 'right';
+    ctx.fillText(String((meta && meta.team) || 'ShuttleIQ team').slice(0, 30), W - 78, 100);
+    ctx.fillText(new Date((meta && meta.date) || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }), W - 78, 130);
+    ctx.textAlign = 'left';
+  }
+
+  // player + label
+  const player = String((meta && meta.player) || (parsed.demo ? 'Demo player' : 'Player')).slice(0, 28);
+  ctx.fillStyle = INK;
+  ctx.font = '800 74px ' + FONT;
+  ctx.fillText(player, 78, 258, 640);
+  if (meta && meta.label) {
+    ctx.fillStyle = MUTED;
+    ctx.font = '500 27px ' + FONT;
+    ctx.fillText(String(meta.label).slice(0, 44), 78, 306, 640);
+  }
+
+  // overall ring (right side)
+  const scores = parsed.scores || {};
+  const vals = SKILLS.map(k => scores[k]).filter(v => typeof v === 'number');
+  const overall = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+  const rcx = W - 175, rcy = 235, rad = 88;
+  ctx.lineWidth = 24;
+  ctx.strokeStyle = BAR;
+  ctx.beginPath(); ctx.arc(rcx, rcy, rad, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = ACC;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(rcx, rcy, rad, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (overall / 100)); ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.fillStyle = INK;
+  ctx.font = '800 58px ' + FONT;
+  ctx.textAlign = 'center';
+  ctx.fillText(String(overall), rcx, rcy + 4);
+  ctx.fillStyle = MUTED;
+  ctx.font = '700 16px ' + FONT;
+  ctx.fillText('O V E R A L L', rcx, rcy + 34);
+  ctx.textAlign = 'left';
+
+  // divider
+  ctx.fillStyle = LINE;
+  ctx.fillRect(78, 352, W - 156, 2);
+
+  // skill bars
+  ctx.fillStyle = MUTED;
+  ctx.font = '800 19px ' + FONT;
+  ctx.fillText('S K I L L   G R A D E S', 78, 402);
+  let y = 432;
+  for (const k of SKILLS) {
+    const v = typeof scores[k] === 'number' ? scores[k] : null;
+    ctx.fillStyle = INK;
+    ctx.font = '600 25px ' + FONT;
+    ctx.fillText(SKILL_LABELS[k].toUpperCase(), 78, y + 18);
+    // track
+    rrPath(ctx, 380, y, W - 380 - 160, 24, 12);
+    ctx.fillStyle = BAR;
+    ctx.fill();
+    // fill
+    if (v != null && v > 0) {
+      rrPath(ctx, 380, y, Math.max(24, (W - 380 - 160) * (v / 100)), 24, 12);
+      ctx.fillStyle = ACC;
+      ctx.fill();
+    }
+    ctx.fillStyle = v == null ? MUTED : INK;
+    ctx.font = '800 25px ' + FONT;
+    ctx.textAlign = 'right';
+    ctx.fillText(v == null ? '—' : String(v), W - 78, y + 20);
+    ctx.textAlign = 'left';
+    y += 74;
+  }
+
+  // top coaching point — the most severe one
+  const rank = { critical: 0, suggestion: 1, positive: 2 };
+  const fb = (parsed.feedback || []).slice().sort((a, b) => (rank[a.type] ?? 1) - (rank[b.type] ?? 1))[0];
+  const py = y + 26;
+  ctx.fillStyle = LINE;
+  ctx.fillRect(78, py, W - 156, 2);
+  ctx.fillStyle = MUTED;
+  ctx.font = '800 19px ' + FONT;
+  ctx.fillText(fb && fb.type === 'positive' ? 'W H A T ’ S   W O R K I N G' : 'T O P   C O A C H I N G   P O I N T', 78, py + 46);
+  if (fb) {
+    ctx.fillStyle = INK;
+    ctx.font = '700 30px ' + FONT;
+    ctx.fillText(String(fb.title).slice(0, 60), 78, py + 94, W - 156);
+    ctx.fillStyle = MUTED;
+    ctx.font = '400 24px ' + FONT;
+    const lines = wrapLines(ctx, fb.body || '', W - 156).slice(0, 3);
+    lines.forEach((l, i) => ctx.fillText(l, 78, py + 136 + i * 34, W - 156));
+  }
+
+  // footer
+  ctx.fillStyle = LINE;
+  ctx.fillRect(78, H - 96, W - 156, 2);
+  ctx.fillStyle = MUTED;
+  ctx.font = '600 22px ' + FONT;
+  ctx.fillText('Analyzed with ShuttleIQ — free AI badminton coaching', 78, H - 44);
+
+  canvas.toBlob(blob => {
+    if (!blob) { toast('Could not build the share image'); return; }
+    const file = new File([blob], 'shuttleiq-report.png', { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: 'ShuttleIQ game report' }).catch(() => { /* user backed out */ });
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'shuttleiq-report.png';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast('Share image saved');
+  }, 'image/png');
 }
 
 /* ---------- compare with a pro ---------- */
@@ -2743,13 +2991,26 @@ function scorerStanding(s) {
   return { usGames, themGames, matchOver: usGames === 2 || themGames === 2 };
 }
 
+/* Build the match-log record for a finished live match. */
+function scoreMatchRecord(s, usGames, themGames, ratings) {
+  const player = getPlayer(s.playerId);
+  return {
+    id: uid(), playerId: s.playerId, partnerId: s.partnerId,
+    date: todayISO(), opponent: s.opponent, discipline: s.discipline,
+    result: usGames > themGames ? 'W' : 'L',
+    score: s.games.map(g => `${g[0]}-${g[1]}`).join(', '),
+    ratings: ratings || {}, notes: '',
+    context: player && player.status === 'tryout' ? 'tryout' : 'season',
+  };
+}
+
 function renderScore(_, params) {
   const live = loadScorer();
   if (live) return renderScorerBoard(live);
 
   const preselect = params?.get('player') || null;
   VIEW.innerHTML = `
-  <div class="page-head"><h1>Live scoring</h1><p class="muted">Tap to score — it saves the match when you're done</p></div>
+  <div class="page-head"><h1>Live scoring</h1><p class="muted">Tap to score — the finished match saves itself</p></div>
   <div class="card" style="max-width:560px">
     <div class="form-grid">
       <label>Player<select id="sc-player">${playerOptions(preselect, { statuses: ['roster', 'tryout'] })}</select></label>
@@ -2779,7 +3040,7 @@ function renderScore(_, params) {
     saveScorer({
       playerId, partnerId, discipline: disc.value,
       opponent: document.getElementById('sc-opp').value.trim() || 'Opponent',
-      games: [], us: 0, them: 0, history: [],
+      games: [], us: 0, them: 0, history: [], savedMatchId: null,
     });
     route();
   });
@@ -2790,6 +3051,19 @@ function renderScorerBoard(s) {
   const { usGames, themGames, matchOver } = scorerStanding(s);
   const winner = gameWinner(s.us, s.them);
   const gameNo = s.games.length + 1;
+
+  // A finished match saves itself the moment the result is decided, so an
+  // accidental close or a full battery can never lose it. Ratings can be
+  // added afterwards — they merge into this same record.
+  if (matchOver && !s.savedMatchId) {
+    const rec = scoreMatchRecord(s, usGames, themGames, {});
+    state.matches.push(rec);
+    s.savedMatchId = rec.id;
+    saveState();
+    saveScorer(s);
+    track('live_score_saved');
+    toast('Match saved to the log');
+  }
 
   VIEW.innerHTML = `
   <div class="scorer">
@@ -2806,13 +3080,13 @@ function renderScorerBoard(s) {
     ${matchOver ? `
       <div class="card center">
         <h2 style="margin-bottom:6px">${usGames > themGames ? 'Win' : 'Loss'} — ${s.games.map(g => `${g[0]}-${g[1]}`).join(', ')}</h2>
-        <p class="muted small">Save it to the match log, with optional skill ratings.</p>
-        <details style="text-align:left;margin-top:10px"><summary>Rate their play (optional, 1–5)</summary>
+        <p class="muted small">${s.savedMatchId ? 'Saved to the match log automatically. ' : ''}Add optional skill ratings, then tap Done.</p>
+        <details style="text-align:left;margin-top:10px" ${s.savedMatchId ? 'open' : ''}><summary>Rate their play (optional, 1–5)</summary>
           <div id="sc-ratings">${SKILLS.map(k => ratingRow(k, SKILL_LABELS[k])).join('')}</div>
         </details>
         <div class="btn-row center" style="margin-top:12px">
-          <button class="btn btn-primary btn-lg" id="sc-save">Save match</button>
-          <button class="btn" id="sc-discard">Discard</button>
+          <button class="btn btn-primary btn-lg" id="sc-save">${s.savedMatchId ? 'Save ratings & finish' : 'Save match'}</button>
+          <button class="btn" id="sc-discard">${s.savedMatchId ? 'Discard result' : 'Discard'}</button>
         </div>
       </div>`
     : `
@@ -2858,13 +3132,21 @@ function renderScorerBoard(s) {
     saveScorer(s);
     renderScorerBoard(s);
   });
+  const dropSavedMatch = () => {
+    if (!s.savedMatchId) return;
+    state.matches = state.matches.filter(m => m.id !== s.savedMatchId);
+    saveState();
+    s.savedMatchId = null;
+  };
   document.getElementById('sc-quit')?.addEventListener('click', () => {
-    if (!confirm('Cancel this match? The score is discarded.')) return;
+    if (!confirm(s.savedMatchId ? 'Cancel this match? The saved result will be removed from the log.' : 'Cancel this match? The score is discarded.')) return;
+    dropSavedMatch();
     saveScorer(null);
     route();
   });
   document.getElementById('sc-discard')?.addEventListener('click', () => {
-    if (!confirm('Discard this result without saving?')) return;
+    if (!confirm(s.savedMatchId ? 'Remove the saved result from the match log?' : 'Discard this result without saving?')) return;
+    dropSavedMatch();
     saveScorer(null);
     route();
   });
@@ -2873,19 +3155,21 @@ function renderScorerBoard(s) {
   if (ratingsBox) wireRatingRows(ratingsBox);
 
   document.getElementById('sc-save')?.addEventListener('click', () => {
-    const player = getPlayer(s.playerId);
-    state.matches.push({
-      id: uid(), playerId: s.playerId, partnerId: s.partnerId,
-      date: todayISO(), opponent: s.opponent, discipline: s.discipline,
-      result: usGames > themGames ? 'W' : 'L',
-      score: s.games.map(g => `${g[0]}-${g[1]}`).join(', '),
-      ratings: ratingsBox ? readRatings(ratingsBox) : {},
-      notes: '', context: player && player.status === 'tryout' ? 'tryout' : 'season',
-    });
-    saveState();
+    const ratings = ratingsBox ? readRatings(ratingsBox) : {};
+    if (s.savedMatchId) {
+      // the match is already in the log — this click attaches the ratings
+      const m = state.matches.find(x => x.id === s.savedMatchId);
+      if (m) m.ratings = ratings;
+      saveState();
+      toast('Ratings saved to the log');
+    } else {
+      const rec = scoreMatchRecord(s, usGames, themGames, ratings);
+      state.matches.push(rec);
+      saveState();
+      track('live_score_saved');
+      toast('Match saved to the log');
+    }
     saveScorer(null);
-    track('live_score_saved');
-    toast('Match saved to the log');
     location.hash = '#/matches';
   });
 }
@@ -2942,7 +3226,9 @@ function renderLadder() {
   </table></div>
   <div class="btn-row no-print"><button class="btn btn-sm" id="ladder-print">Print ladder</button>${coach ? '<button class="btn btn-sm" id="ladder-reset">Reseed from form</button>' : ''}</div>
   </div>`
-  : '<div class="empty"><h3>No roster players yet</h3><p>The ladder ranks everyone with roster status. Add players and they\'ll seed automatically by current form.</p><div class="btn-row center"><a class="btn btn-primary" href="#/players">Add players</a></div></div>'}`;
+  : (coach
+      ? '<div class="empty"><h3>No roster players yet</h3><p>The ladder ranks everyone with roster status. Add players and they\'ll seed automatically by current form.</p><div class="btn-row center"><a class="btn btn-primary" href="#/players">Add players</a></div></div>'
+      : '<div class="empty"><h3>No roster yet</h3><p>Your coach hasn\'t added the team on this device. Check back after practice — or sign in as the coach.</p></div>')}`;
 
   const logChallenge = challengerWon => {
     if (!isCoach()) return;   // belt and braces: the form isn't rendered for players
@@ -3205,6 +3491,172 @@ function adminStatsHTML(data) {
   </div>`;
 }
 
+/* ---------- practice attendance (coach) ---------- */
+
+const ATT_STATUS = [
+  { key: 'present', label: 'Present' },
+  { key: 'absent', label: 'Absent' },
+  { key: 'excused', label: 'Excused' },
+];
+
+function attendanceForDate(date) {
+  return state.attendance.find(a => a.date === date) || null;
+}
+
+/* All-time rate. Excused sessions don't count for or against — a family
+   holiday is not a missed practice. */
+function attendanceRateFor(playerId) {
+  let present = 0, counted = 0;
+  for (const session of state.attendance) {
+    const st = session.entries[playerId];
+    if (st === 'present') { present++; counted++; }
+    else if (st === 'absent') counted++;
+  }
+  return counted ? Math.round((present / counted) * 100) : null;
+}
+
+function attendanceCSV() {
+  const rows = [['Date', 'Player', 'Status', 'Note']];
+  const players = new Map(state.players.map(p => [p.id, p.name]));
+  const sessions = [...state.attendance].sort((a, b) => (a.date < b.date ? -1 : 1));
+  for (const s of sessions) {
+    for (const [playerId, status] of Object.entries(s.entries)) {
+      rows.push([s.date, players.get(playerId) || 'Unknown player', status, s.note || '']);
+    }
+  }
+  return rows.map(r => r.map(c => {
+    const v = String(c ?? '');
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }).join(',')).join('\n');
+}
+
+function renderAttendance(_, params) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(params?.get('date') || '') ? params.get('date') : todayISO();
+  const players = state.players.filter(p => p.status !== 'cut').sort((a, b) => a.name.localeCompare(b.name));
+  const existing = attendanceForDate(date);
+  const prev = new Map(Object.entries(existing?.entries || {}));
+  // brand-new sessions default everyone to Present — the common case is a full turnout with a couple of exceptions
+  const current = id => prev.get(id) || 'present';
+
+  const sessions = [...state.attendance].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 30);
+
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Practice attendance</h1><p class="muted">One list per practice. Present by default — tap the others only for who missed.</p></div>
+
+  <div class="card">
+    <div class="form-grid">
+      <label>Practice date<input type="date" id="att-date" value="${esc(date)}"></label>
+      <label>Note (optional)<input type="text" id="att-note" maxlength="120" value="${esc(existing?.note || '')}" placeholder="e.g. Footwork block, gym 2"></label>
+    </div>
+    ${players.length ? `
+    <div id="att-list" style="margin-top:6px">
+      ${players.map(p => {
+        const rate = attendanceRateFor(p.id);
+        const cur = current(p.id);
+        return `<div class="att-row" data-id="${p.id}">
+          <div class="att-name">${esc(p.name)}${p.status === 'tryout' ? ' <span class="tag">tryout</span>' : ''}<span class="muted small att-rate">${rate == null ? 'no history' : rate + '% all-time'}</span></div>
+          <div class="att-seg" role="group" aria-label="Attendance for ${esc(p.name)}">
+            ${ATT_STATUS.map(s => `<button type="button" class="att-btn${cur === s.key ? ' on-' + s.key : ''}" data-status="${s.key}" aria-pressed="${cur === s.key}">${s.label}</button>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" id="att-save">${existing ? 'Update' : 'Save'} attendance</button>${existing ? '<button class="btn btn-danger" id="att-delete">Delete this day</button>' : ''}</div>`
+    : '<div class="empty"><h3>No players yet</h3><p>Add your roster first, then attendance is one tap per player.</p><div class="btn-row center"><a class="btn btn-primary" href="#/players">Add players</a></div></div>'}
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px">History <button class="btn btn-sm" id="att-csv" ${sessions.length ? '' : 'disabled'}>Export CSV</button></div>
+    ${sessions.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Present</th><th>Absent</th><th>Excused</th><th>Note</th><th></th></tr></thead>
+      <tbody>${sessions.map(s => {
+        const vals = Object.values(s.entries);
+        const c = st => vals.filter(v => v === st).length;
+        return `<tr>
+          <td>${fmtDate(s.date)}</td>
+          <td>${c('present')}</td>
+          <td>${c('absent')}${c('absent') ? ' ✗' : ''}</td>
+          <td>${c('excused')}</td>
+          <td class="small">${esc(s.note || '')}</td>
+          <td style="text-align:right"><a class="btn btn-sm" href="#/attendance?date=${esc(s.date)}">Edit</a></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>` : '<p class="muted">No practices logged yet. Save your first one above.</p>'}
+  </div>`;
+
+  document.getElementById('att-date')?.addEventListener('change', e => {
+    location.hash = '#/attendance?date=' + encodeURIComponent(e.target.value || todayISO());
+  });
+
+  VIEW.querySelectorAll('.att-seg').forEach(seg => {
+    seg.addEventListener('click', e => {
+      const btn = e.target.closest('.att-btn');
+      if (!btn) return;
+      seg.querySelectorAll('.att-btn').forEach(b => {
+        const on = b === btn;
+        b.classList.toggle('on-present', on && b.dataset.status === 'present');
+        b.classList.toggle('on-absent', on && b.dataset.status === 'absent');
+        b.classList.toggle('on-excused', on && b.dataset.status === 'excused');
+        b.setAttribute('aria-pressed', String(on));
+      });
+    });
+  });
+
+  document.getElementById('att-save')?.addEventListener('click', () => {
+    const entries = {};
+    VIEW.querySelectorAll('.att-row').forEach(row => {
+      const on = row.querySelector('.att-btn[aria-pressed="true"]');
+      entries[row.dataset.id] = on ? on.dataset.status : 'present';
+    });
+    const note = document.getElementById('att-note').value.trim();
+    const rest = state.attendance.filter(a => a.date !== date);
+    state.attendance = [...rest, { id: existing?.id || uid(), date, entries, note }];
+    saveState();
+    track('attendance_saved');
+    toast(existing ? 'Attendance updated' : 'Attendance saved');
+    renderAttendance(_, params);
+  });
+
+  document.getElementById('att-delete')?.addEventListener('click', () => {
+    if (!confirm('Delete the attendance list for ' + date + '?')) return;
+    state.attendance = state.attendance.filter(a => a.date !== date);
+    saveState();
+    toast('Deleted');
+    location.hash = '#/attendance';
+  });
+
+  document.getElementById('att-csv')?.addEventListener('click', () => {
+    const blob = new Blob([attendanceCSV()], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'shuttleiq-attendance.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Attendance CSV downloaded');
+  });
+}
+
+/* ---------- privacy (public, short and honest) ---------- */
+
+function renderPrivacy() {
+  const row = (title, body) => `
+    <div class="card">
+      <div class="card-title">${title}</div>
+      <p class="small muted" style="margin:0">${body}</p>
+    </div>`;
+  VIEW.innerHTML = `
+  <div class="page-head"><h1>Privacy</h1><p class="muted">Short version: team data stays on your device. AI analysis is the one exception — read that part.</p></div>
+  ${row('What stays on your device', 'Roster, matches, skill ratings, attendance, ladder order, coach notes and saved video clips. This is stored in the browser on your device — there is no central database of your team. Export a backup from Settings to move it; delete site data in your browser and it\'s gone.')}
+  ${row('What goes to the AI company', 'When you run an analysis (or Compare, or an AI coach note), your clip or a handful of still frames are sent to the AI provider you picked in Settings — usually Google Gemini. Free plans for these services may keep the content and use it to improve their products. Do not film anyone who has not agreed. On a shared team key, the same limits apply.')}
+  ${row('Anonymous usage counts', 'The app sends event names only (like "analysis opened") plus a random device id, to help the team understand what gets used. No names, no scores, no video, no messages — ever. If you prefer, block \'/api/track\' in your browser and the app works the same.')}
+  ${row('Sign-in, if your site switched it on', 'Google: the sign-in token is checked on the server, never stored. Phone: Twilio texts a code; only a one-way scrambled id is kept, never your number. Guest sign-in stores nothing beyond this one device.')}
+  ${row('If your players are school children', 'Most ShuttleIQ teams are school teams. Get a parent\'s or the school\'s consent before filming or analyzing any student — tell them the clip goes to the AI company. The coach controls the roster on the team device. If a family asks for their child\'s data to be removed, delete the player in the app and ask the school to purge any backups.')}
+  ${row('What we never collect', 'No location, contacts, photos of anything besides the clip you analyze, no payment details, no ads. The coach passcode is a soft gate for a shared device, not real security — treat it that way.')}
+  ${row('Questions', 'Talk to the coach of your team — they hold the roster and the backups. Anything about a specific AI provider\'s terms lives on that provider\'s site.')}
+  <p class="small muted">Last updated November 2026 · ShuttleIQ v${esc(APP_VERSION)}</p>`;
+}
+
 /* ---------- guide (public) ---------- */
 
 function renderGuide() {
@@ -3216,7 +3668,7 @@ function renderGuide() {
     </div>`;
 
   VIEW.innerHTML = `
-  <div class="page-head"><h1>How to use ShuttleIQ</h1><p class="muted">Everything stays on your device — no accounts, no server</p></div>
+  <div class="page-head"><h1>How to use ShuttleIQ</h1><p class="muted">Data stays on your device — except AI analysis, which sends your clip to the AI company. <a href="#/privacy">Privacy, in plain words</a></p></div>
 
   <div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
     <span style="flex:1;min-width:240px"><b>Prefer to be shown?</b> The guided tour loads a sample team, walks you through every screen, and clears it when you're done.</span>
@@ -3394,8 +3846,8 @@ function renderSettings() {
 
   <div class="card">
     <div class="card-title">About</div>
-    <p class="small muted">ShuttleIQ v${esc(APP_VERSION)} — a local-first app: no server, no accounts, data stays in this browser. Use Export/Import to move it between devices.</p>
-    <div class="btn-row"><a class="btn btn-sm" href="#/guide">Open the guide</a></div>
+    <p class="small muted">ShuttleIQ v${esc(APP_VERSION)} — local-first: your team data is stored in this browser, no account needed. AI analysis is the one exception — it sends your clip to the AI provider you pick. <a href="#/privacy">Privacy in plain words</a>. Use Export/Import to move data between devices.</p>
+    <div class="btn-row"><a class="btn btn-sm" href="#/guide">Open the guide</a><a class="btn btn-sm" href="#/privacy">Privacy</a></div>
   </div>`;
 
   document.getElementById('set-team-save').addEventListener('click', () => {
@@ -3432,7 +3884,7 @@ function renderSettings() {
       const left = serverCallsLeft();
       serverLine.innerHTML = st.ready
         ? `<b style="color:var(--win)">Free team model is live.</b> About ${st.perDay} analyses per person per day, counted on the server.${left != null ? ` You have ${left} left today.` : ''}`
-        : '<b style="color:var(--warn)">Free team model is not set up yet.</b> See <b>AI-SERVER.md</b> - it needs an NVIDIA key and the usage store on the server, never in a browser.';
+        : '<b style="color:var(--warn)">Free team model is not set up yet.</b> It needs a Gemini (or NVIDIA) key and the usage store in the Vercel env vars, never in a browser — ask the site admin.';
     }).catch(() => { serverLine.textContent = ''; });
   }
 

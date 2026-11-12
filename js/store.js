@@ -1,6 +1,6 @@
 /* ShuttleIQ v6 — persistence: localStorage state + IndexedDB video clips */
 
-const APP_VERSION = '6.3';
+const APP_VERSION = '6.4';
 const STORE_KEY = 'shuttleiq_v6';
 const LEGACY_KEY = 'shuttleiq_v5';
 
@@ -24,6 +24,7 @@ const DEFAULT_STATE = {
   sessions: [],  // {id, playerId, date, label, focus, scores, feedback[], clipId}
   rosters: [],   // {id, name, date, slots:[{code, label, type:'singles'|'doubles', playerIds:[]}]}
   ladder: [],    // playerIds in rank order — the team's internal challenge ladder
+  attendance: [], // {id, date:'YYYY-MM-DD', entries:{playerId:'present'|'absent'|'excused'}, note}
 };
 
 const AVAILABILITY = {
@@ -82,6 +83,9 @@ function mergeState(parsed) {
     sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
     rosters: Array.isArray(parsed.rosters) ? parsed.rosters : [],
     ladder: Array.isArray(parsed.ladder) ? parsed.ladder.filter(id => typeof id === 'string') : [],
+    attendance: Array.isArray(parsed.attendance)
+      ? parsed.attendance.filter(a => a && typeof a === 'object' && typeof a.date === 'string' && a.entries && typeof a.entries === 'object')
+      : [],
   };
 }
 

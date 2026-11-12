@@ -1,9 +1,11 @@
 /* Returns the analytics summary. The password lives ONLY here, in a Vercel
    environment variable, so it is never shipped to the browser. */
 
-import { redisConfig, pipeline } from './_store.js';
+import { redisConfig, pipeline, bump, clientIp } from './_store.js';
 
 const MAX_DAYS = 60;
+const PER_WINDOW = 20;        // requests per 10 min per IP, period
+const MAX_FAILS = 10;         // wrong passwords per 15 min per IP before lockout
 
 function safeEqual(a, b) {
   if (a.length !== b.length) return false;
@@ -19,20 +21,45 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Cheap ceiling on all requests, then a stricter lockout for wrong passwords.
+  const cfg = redisConfig();
+  const ip = clientIp(req);
+  try {
+    const n = cfg ? await bump(cfg, 'siq:stats:' + ip + ':' + Math.floor(Date.now() / 600000), 600) : 0;
+    if (n > PER_WINDOW) { res.status(429).json({ ok: false, error: 'Too many tries. Wait a few minutes.' }); return; }
+    if (cfg) {
+      // Read-only peek at the current lockout window; only misses increment it.
+      const out = await pipeline(cfg, [['GET', 'siq:statsfail:' + ip + ':' + Math.floor(Date.now() / 900000)]]);
+      const fails = Number(out[0] && out[0].result) || 0;
+      if (fails >= MAX_FAILS) { res.status(429).json({ ok: false, error: 'Too many wrong passwords. Try again later.' }); return; }
+    }
+  } catch {
+    res.status(503).json({ ok: false, error: 'Could not check the rate limit. Try again shortly.' });
+    return;
+  }
+
   const expected = process.env.ANALYTICS_PASSWORD || '';
   if (!expected) {
     res.status(503).json({ ok: false, error: 'No ANALYTICS_PASSWORD set in Vercel yet.' });
     return;
   }
 
-  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  let body;
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  } catch {
+    res.status(400).json({ ok: false, error: 'Bad request body.' });
+    return;
+  }
   const given = String(body.password || '');
   if (!safeEqual(given, expected)) {
+    if (cfg) {
+      try { await bump(cfg, 'siq:statsfail:' + ip + ':' + Math.floor(Date.now() / 900000), 900); } catch { /* the 401 still stands */ }
+    }
     res.status(401).json({ ok: false, error: 'Wrong password.' });
     return;
   }
 
-  const cfg = redisConfig();
   if (!cfg) {
     res.status(503).json({ ok: false, error: 'Analytics storage is not connected in Vercel yet.' });
     return;

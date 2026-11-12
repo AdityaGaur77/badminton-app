@@ -22,3 +22,21 @@ export function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/* Fixed-window rate limiter backed by Redis INCR + EXPIRE.
+   key must already include the window slot (e.g. prefix + day, or prefix + minute).
+   Returns the running count; callers compare it with their own limit.
+   Throws when storage is unreachable — callers decide whether to fail open or closed. */
+export async function bump(cfg, key, ttlSeconds) {
+  const out = await pipeline(cfg, [
+    ['INCR', key],
+    ['EXPIRE', key, ttlSeconds],
+  ]);
+  return Number(out[0] && out[0].result) || 0;
+}
+
+/* Best-effort client IP. The platform sets x-forwarded-for; anything the
+   page sends is ignored. */
+export function clientIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.headers['x-real-ip'] || 'noip';
+}

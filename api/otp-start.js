@@ -1,6 +1,10 @@
 /* Sends a 6-digit code by SMS using Twilio Verify.
    Twilio charges per message, so this stays off until the three
-   TWILIO_* environment variables are set. */
+   TWILIO_* environment variables are set. When it is on, the usage
+   store must also be connected - an SMS endpoint without a counter
+   is an SMS endpoint someone can drain. */
+
+import { redisConfig, bump, clientIp } from './_store.js';
 
 function twilioConfig() {
   const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -16,11 +20,40 @@ export default async function handler(req, res) {
   const cfg = twilioConfig();
   if (!cfg) { res.status(503).json({ ok: false, error: 'Phone sign-in is not set up on the server.' }); return; }
 
+  let body;
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const phone = String(body.phone || '').replace(/[^\d+]/g, '');
-    if (phone.replace(/\D/g, '').length < 7) { res.status(400).json({ ok: false, error: 'That number looks wrong.' }); return; }
+    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  } catch {
+    res.status(400).json({ ok: false, error: 'Bad request body.' });
+    return;
+  }
+  const phone = String(body.phone || '').replace(/[^\d+]/g, '');
+  const phoneDigits = phone.replace(/\D/g, '');
+  if (phoneDigits.length < 7) { res.status(400).json({ ok: false, error: 'That number looks wrong.' }); return; }
 
+  // No store, no SMS: without counting, there is no limit, and every
+  // text costs real money.
+  const store = redisConfig();
+  if (!store) {
+    res.status(503).json({ ok: false, error: 'Phone sign-in needs the usage store connected (Upstash Redis) before it can send texts.' });
+    return;
+  }
+
+  try {
+    const ip = clientIp(req);
+    const hour = Math.floor(Date.now() / 3600000);
+    const day = new Date().toISOString().slice(0, 10);
+    const ipHour = await bump(store, `otp:ip:${ip}:${hour}`, 3700);
+    const ipDay = await bump(store, `otp:ipd:${ip}:${day}`, 172800);
+    const phoneHour = await bump(store, `otp:ph:${phoneDigits}:${hour}`, 3700);
+    if (ipHour > 5 || ipDay > 20) { res.status(429).json({ ok: false, error: 'Too many codes from this connection. Try again later.' }); return; }
+    if (phoneHour > 3) { res.status(429).json({ ok: false, error: 'That number has been sent three codes this hour. Try again later.' }); return; }
+  } catch {
+    res.status(503).json({ ok: false, error: 'Could not check the limit. Try again shortly.' });
+    return;
+  }
+
+  try {
     const url = 'https://verify.twilio.com/v2/Services/' + cfg.service + '/Verifications';
     const out = await fetch(url, {
       method: 'POST',

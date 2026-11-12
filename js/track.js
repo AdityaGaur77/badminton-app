@@ -6,6 +6,10 @@
 const TRACK_URL = '/api/track';
 const TRACK_ENABLED = location.protocol === 'http:' || location.protocol === 'https:';
 
+/* One id per tab when storage is blocked — never a shared bucket, which
+   would let one visitor count as "many". */
+let volatileVisitor = null;
+
 function anonVisitorId() {
   try {
     let id = localStorage.getItem('siq_visitor');
@@ -15,7 +19,8 @@ function anonVisitorId() {
     }
     return id;
   } catch {
-    return 'v-nostore';
+    if (!volatileVisitor) volatileVisitor = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    return volatileVisitor;
   }
 }
 

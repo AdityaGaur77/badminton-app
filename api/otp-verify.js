@@ -1,7 +1,9 @@
 import crypto from 'crypto';
+import { redisConfig, bump, clientIp } from './_store.js';
 
 /* Checks the 6-digit code with Twilio Verify. Only Twilio can approve it,
-   so guessing in the browser gets you nowhere. */
+   so guessing in the browser gets you nowhere - but every check costs an
+   API call, so attempts are counted and capped. */
 
 function twilioConfig() {
   const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -23,12 +25,36 @@ export default async function handler(req, res) {
   const cfg = twilioConfig();
   if (!cfg) { res.status(503).json({ ok: false, error: 'Phone sign-in is not set up on the server.' }); return; }
 
+  let body;
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const phone = String(body.phone || '').replace(/[^\d+]/g, '');
-    const code = String(body.code || '').replace(/\D/g, '');
-    if (!phone || code.length < 4) { res.status(400).json({ ok: false, error: 'Type the 6-digit code.' }); return; }
+    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  } catch {
+    res.status(400).json({ ok: false, error: 'Bad request body.' });
+    return;
+  }
+  const phone = String(body.phone || '').replace(/[^\d+]/g, '');
+  const code = String(body.code || '').replace(/\D/g, '');
+  if (!phone || code.length < 4) { res.status(400).json({ ok: false, error: 'Type the 6-digit code.' }); return; }
 
+  // No store, no guessing game: without counting, one script can brute-force
+  // against Twilio on our bill.
+  const store = redisConfig();
+  if (!store) {
+    res.status(503).json({ ok: false, error: 'Phone sign-in needs the usage store connected (Upstash Redis) before codes can be checked.' });
+    return;
+  }
+  try {
+    const ip = clientIp(req);
+    const win = Math.floor(Date.now() / 600000); // 10-minute windows
+    const ipTries = await bump(store, `otpcheck:ip:${ip}:${win}`, 700);
+    const phoneTries = await bump(store, `otpcheck:ph:${phone.replace(/\D/g, '')}:${win}`, 700);
+    if (ipTries > 30 || phoneTries > 8) { res.status(429).json({ ok: false, error: 'Too many attempts. Wait ten minutes.' }); return; }
+  } catch {
+    res.status(503).json({ ok: false, error: 'Could not check the limit. Try again shortly.' });
+    return;
+  }
+
+  try {
     const url = 'https://verify.twilio.com/v2/Services/' + cfg.service + '/VerificationCheck';
     const out = await fetch(url, {
       method: 'POST',
