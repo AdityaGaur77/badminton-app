@@ -17,6 +17,56 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
+/* ---------- diagnostics (for "Report a problem") ---------- */
+
+/* The last few runtime errors, so a report can include what actually broke.
+   Never any roster data — only the message and location. */
+function noteError(msg, where) {
+  try {
+    const line = String(msg || 'unknown error').slice(0, 160) + (where ? ' @ ' + String(where).slice(0, 60) : '');
+    const arr = JSON.parse(sessionStorage.getItem('siq_errors') || '[]');
+    if (arr[0] !== line) arr.unshift(line);
+    sessionStorage.setItem('siq_errors', JSON.stringify(arr.slice(0, 5)));
+  } catch { /* storage full or blocked — diagnostics stay empty */ }
+}
+window.addEventListener('error', e => noteError(e.message || (e.error && e.error.message), (e.filename || '') + ':' + (e.lineno || 0)));
+window.addEventListener('unhandledrejection', e => noteError('unhandled: ' + ((e.reason && e.reason.message) || String(e.reason)), ''));
+
+/* A short, shareable snapshot. Counts only — no player names, ratings or
+   clips leave the device. The user sees it before sending. */
+function diagnosticsText() {
+  const count = a => (Array.isArray(a) ? a.length : 0);
+  const st = (typeof state !== 'undefined' && state) ? state : {};
+  const s = st.settings || {};
+  let storageKb = 0;
+  try { for (const k of Object.keys(localStorage)) storageKb += (localStorage.getItem(k) || '').length; } catch {}
+  let errors = [];
+  try { errors = JSON.parse(sessionStorage.getItem('siq_errors') || '[]'); } catch {}
+  return [
+    `ShuttleIQ v${APP_VERSION}`,
+    `role: ${(typeof getRole === 'function' && getRole()) || 'guest'}`,
+    `theme: ${s.theme || 'midnight'} · AI provider: ${s.provider || 'server'}`,
+    `roster: ${(st.players || []).filter(p => p.status === 'roster').length} · prospects: ${(st.players || []).filter(p => p.status === 'tryout').length} · matches: ${count(st.matches)} · attendance: ${count(st.attendance)}`,
+    `localStorage: ~${Math.round(storageKb / 1024)}KB (video clips are not included)`,
+    `browser: ${String(navigator.userAgent).slice(0, 200)}`,
+    `page: ${location.hash || '#/'}`,
+    errors.length ? `recent errors:\n- ${errors.join('\n- ')}` : 'recent errors: none',
+  ].join('\n');
+}
+
+function feedbackUrl() {
+  const body = [
+    'What happened, or what were you trying to do?',
+    '',
+    '',
+    '---',
+    'Diagnostics (delete anything you would rather not share — it has no names):',
+    '',
+    diagnosticsText(),
+  ].join('\n');
+  return 'https://github.com/AdityaGaur77/badminton-app/issues/new?title=' + encodeURIComponent('Feedback: ') + '&body=' + encodeURIComponent(body);
+}
+
 function fmtDate(iso) {
   if (!iso) return '';
   // date-only strings must be parsed as LOCAL dates — new Date('2026-07-12')
@@ -3850,7 +3900,8 @@ function renderSettings() {
   <div class="card">
     <div class="card-title">About</div>
     <p class="small muted">ShuttleIQ v${esc(APP_VERSION)} — local-first: your team data is stored in this browser, no account needed. AI analysis is the one exception — it sends your clip to the AI provider you pick. <a href="#/privacy">Privacy in plain words</a>. Use Export/Import to move data between devices.</p>
-    <div class="btn-row"><a class="btn btn-sm" href="#/guide">Open the guide</a><a class="btn btn-sm" href="#/privacy">Privacy</a></div>
+    <div class="btn-row"><a class="btn btn-sm" href="#/guide">Open the guide</a><a class="btn btn-sm" href="#/privacy">Privacy</a><button class="btn btn-sm" id="diag-copy">Copy diagnostics</button><button class="btn btn-sm" id="report-problem">Report a problem…</button></div>
+    <p class="small muted" style="margin-bottom:0">Report a problem opens a pre-filled issue on the project's GitHub page — it includes the app version and a few counts, never your players' names, ratings or clips. You can delete anything you don't want to share before sending. <b>Copy diagnostics</b> puts the same text on your clipboard.</p>
   </div>`;
 
   document.getElementById('set-team-save').addEventListener('click', () => {
@@ -3858,6 +3909,29 @@ function renderSettings() {
     saveState();
     toast('Team name saved');
     buildNav();
+  });
+
+  document.getElementById('diag-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(diagnosticsText());
+      toast('Diagnostics copied');
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = diagnosticsText();
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const done = document.execCommand('copy');
+        ta.remove();
+        toast(done ? 'Diagnostics copied' : 'Copy failed — screenshot your version instead');
+      } catch {
+        toast('Copy failed — screenshot your version instead');
+      }
+    }
+  });
+  document.getElementById('report-problem').addEventListener('click', () => {
+    window.open(feedbackUrl(), '_blank', 'noopener,noreferrer');
   });
 
   const saveAI = () => {

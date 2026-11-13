@@ -1,6 +1,6 @@
 /* ShuttleIQ v6 — persistence: localStorage state + IndexedDB video clips */
 
-const APP_VERSION = '6.5';
+const APP_VERSION = '6.6';
 const STORE_KEY = 'shuttleiq_v6';
 const LEGACY_KEY = 'shuttleiq_v5';
 

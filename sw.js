@@ -2,9 +2,9 @@
    Keeps the app loading in gyms with bad wifi once it's been opened once.
    Only same-origin GETs are handled; AI provider calls pass through untouched. */
 
-const CACHE = 'shuttleiq-v6-30';
+const CACHE = 'shuttleiq-v6-31';
 const ASSETS = [
-  './', './index.html', './styles.css', './manifest.json', './icon.svg',
+  './', './index.html', './styles.css', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png',
   './js/track.js', './js/pose.js', './js/data.js', './js/auth.js', './js/store.js', './js/analytics.js', './js/charts.js', './js/ai.js', './js/app.js',
 ];
 

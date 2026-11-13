@@ -52,7 +52,8 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 - **In-app guide** — a written Guide page for coaches and players covering the first ten minutes, filming tips, and setup.
 - **Don't lose the season** — the coach passcode comes with a one-time **recovery code** (a forgotten passcode no longer means wiping the team), and the dashboard nudges you to export a backup when one is overdue.
 - Settings also has JSON export/import for backups, a **guided tour**, and a storage meter.
-- **Works offline & installs like an app** — once opened over http(s), a service worker caches the app (gym wifi won't take it down), and on a phone you can "Add to Home Screen" for a standalone app experience.
+- **Report a problem** — Settings → About has two buttons: **Copy diagnostics** (version, a few counts, recent errors — never names) and **Report a problem…**, which opens a pre-filled GitHub issue with the same text. You review the text before sending, and it contains no player names, ratings or clips.
+- **Works offline & installs like an app** — once opened over http(s), a service worker caches the app (gym wifi won't take it down), and on a phone you can "Add to Home Screen" for a standalone app experience. PNG icons (192/512, maskable) and an apple-touch-icon ship with it, so the icon looks right on iPhone and Android.
 
 - **Usage analytics (optional)** — anonymous counts of visitors and actions. Tap the logo 5 times to reach a password-protected page. Set `ANALYTICS_PASSWORD` in Vercel; counts live in the same Upstash Redis store the shared-AI proxy uses. No names, scores, or video ever leave the device.
 
@@ -63,7 +64,7 @@ A single-page webapp. Open `index.html` in a browser (or serve the folder with a
 |---|---|
 | `index.html` | App shell, CSP, favicon, script loading |
 | `vercel.json` | Security headers for every response (nosniff, DENY framing, HSTS, permissions-policy) |
-| `manifest.json` / `icon.svg` / `sw.js` | Installable PWA + offline caching (network-first) |
+| `manifest.json` / `icon.svg` / `icon-*.png` / `apple-touch-icon.png` / `sw.js` | Installable PWA + offline caching (network-first) |
 | `styles.css` | Light design system: tokens, cards, tables, forms, print rules |
 | `js/track.js` | Anonymous usage counter (fails silently offline) |
 | `api/*.js` | Serverless endpoints: usage counter + admin stats, shared-AI proxy, sign-in (see *Deploying to Vercel*) |
@@ -103,6 +104,13 @@ The app is static; the shared-AI proxy, usage analytics and phone sign-in run on
 4. **(Optional) Google sign-in** — set `GOOGLE_CLIENT_ID` from console.cloud.google.com (add your site's origin). **(Optional) Phone sign-in** — set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`. Both sign-ins require the Upstash store; SMS is capped per day per person and per phone number. Phone rate-limit keys use a salted hash — set `PHONE_ID_SALT` to your own long random value if you want the hashes tied to this deployment only.
 
 Known limit, stated honestly: the shared daily cap is per calendar day for everyone combined, and per IP / per device for each user. Someone determined enough to randomise both can push the shared cap — the real fix is accounts (see roadmap). The per-person daily cap cannot be gamed without a new device id, and the per-IP cap cannot be gamed without a new IP.
+
+## Changes in 6.6 (install & feedback)
+
+- **PNG icons shipped** — 192/512 plus a maskable variant, `apple-touch-icon.png` for iPhone, and manifest `purpose: maskable` so "Add to Home Screen" looks right on both platforms. iPhone web-app meta tags added; the favicon now uses the SVG file instead of a data URI.
+- **Report a problem** — Settings → About opens a pre-filled GitHub issue with diagnostics: app version, role, theme, a few counts, localStorage size, browser, and the last runtime errors. No player names, ratings or clips are included — and you can delete anything before sending. **Copy diagnostics** puts the same text on your clipboard for email or chat.
+- **Recent-error tail** — the last five runtime errors are kept in session storage so a report can say what actually broke.
+- **Service worker precache list** updated to include the new icons.
 
 ## Changes in 6.5 (review follow-up)
 
