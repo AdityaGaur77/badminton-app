@@ -2,6 +2,17 @@
    Talks to Upstash Redis over plain HTTPS, so there are no npm packages and
    the project keeps its "no build step" rule. */
 
+import crypto from 'crypto';
+
+/* One-way id for a phone number. Rate-limit keys and account ids use this,
+   so the raw number never lands in the usage store. Digits are normalised
+   first, so "+1 555..." and "1555..." map to the same id. */
+export function phoneId(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  const salt = process.env.PHONE_ID_SALT || 'shuttleiq-phone';
+  return 'p:' + crypto.createHash('sha256').update(salt + digits).digest('hex').slice(0, 24);
+}
+
 export function redisConfig() {
   const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;

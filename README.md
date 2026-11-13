@@ -100,9 +100,18 @@ The app is static; the shared-AI proxy, usage analytics and phone sign-in run on
 1. **Connect Upstash Redis** — Vercel dashboard → your project → **Storage** → **Upstash Redis** → Create/Connect. This sets `KV_REST_API_URL` and `KV_REST_API_TOKEN`. *Redeploy.*
 2. **Turn on the shared model** — set `GEMINI_API_KEY` (free key from aistudio.google.com; a `gemini-flash-lite-latest` default is used, ~500 free calls/day) or `NVIDIA_API_KEY`. Optional tuning: `AI_DAILY_PER_USER` (default 10), `AI_DAILY_TOTAL` (default 200), `AI_PER_MINUTE` (default 3).
 3. **Turn on analytics** — set `ANALYTICS_PASSWORD` to anything long. Tap the logo 5 times in the live app to open the stats page. Without it, the proxy still runs but stats return 401.
-4. **(Optional) Google sign-in** — set `GOOGLE_CLIENT_ID` from console.cloud.google.com (add your site's origin). **(Optional) Phone sign-in** — set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`. Both sign-ins require the Upstash store; SMS is capped per day per person and per phone number.
+4. **(Optional) Google sign-in** — set `GOOGLE_CLIENT_ID` from console.cloud.google.com (add your site's origin). **(Optional) Phone sign-in** — set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`. Both sign-ins require the Upstash store; SMS is capped per day per person and per phone number. Phone rate-limit keys use a salted hash — set `PHONE_ID_SALT` to your own long random value if you want the hashes tied to this deployment only.
 
 Known limit, stated honestly: the shared daily cap is per calendar day for everyone combined, and per IP / per device for each user. Someone determined enough to randomise both can push the shared cap — the real fix is accounts (see roadmap). The per-person daily cap cannot be gamed without a new device id, and the per-IP cap cannot be gamed without a new IP.
+
+## Changes in 6.5 (review follow-up)
+
+- **Sign-in buttons really hide** when Google or phone sign-in is off — a global `[hidden]` rule now beats the flex layout that was cancelling it.
+- **Phone number is not kept** — the SMS rate-limit keys now use a salted one-way id instead of the raw digits, matching what the privacy page says.
+- **Score page wording** matches the button: "Save ratings & finish".
+- **Dropdown menus** keep hovering across the 8px gap between button and menu.
+- **Attendance CSV** neutralises names/notes starting with `=`, `+`, `-` or `@` so a spreadsheet cannot run them as formulas.
+- **COOP relaxed to `same-origin-allow-popups`** so a Google sign-in popup will not be blocked if it is switched on later.
 
 ## Changes in 6.4 (review pass)
 

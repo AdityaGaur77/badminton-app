@@ -1,5 +1,4 @@
-import crypto from 'crypto';
-import { redisConfig, bump, clientIp } from './_store.js';
+import { redisConfig, bump, clientIp, phoneId } from './_store.js';
 
 /* Checks the 6-digit code with Twilio Verify. Only Twilio can approve it,
    so guessing in the browser gets you nowhere - but every check costs an
@@ -12,11 +11,8 @@ function twilioConfig() {
   return sid && token && service ? { sid, token, service } : null;
 }
 
-/* Never store or return a full phone number - keep a one-way id instead. */
-function phoneId(phone) {
-  const salt = process.env.PHONE_ID_SALT || 'shuttleiq-phone';
-  return 'p:' + crypto.createHash('sha256').update(salt + phone).digest('hex').slice(0, 24);
-}
+/* Rate-limit keys use a one-way phone id from _store.js - never the full
+   number. */
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -47,7 +43,7 @@ export default async function handler(req, res) {
     const ip = clientIp(req);
     const win = Math.floor(Date.now() / 600000); // 10-minute windows
     const ipTries = await bump(store, `otpcheck:ip:${ip}:${win}`, 700);
-    const phoneTries = await bump(store, `otpcheck:ph:${phone.replace(/\D/g, '')}:${win}`, 700);
+    const phoneTries = await bump(store, `otpcheck:ph:${phoneId(phone)}:${win}`, 700);
     if (ipTries > 30 || phoneTries > 8) { res.status(429).json({ ok: false, error: 'Too many attempts. Wait ten minutes.' }); return; }
   } catch {
     res.status(503).json({ ok: false, error: 'Could not check the limit. Try again shortly.' });

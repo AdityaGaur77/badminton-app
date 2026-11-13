@@ -3080,7 +3080,7 @@ function renderScorerBoard(s) {
     ${matchOver ? `
       <div class="card center">
         <h2 style="margin-bottom:6px">${usGames > themGames ? 'Win' : 'Loss'} — ${s.games.map(g => `${g[0]}-${g[1]}`).join(', ')}</h2>
-        <p class="muted small">${s.savedMatchId ? 'Saved to the match log automatically. ' : ''}Add optional skill ratings, then tap Done.</p>
+        <p class="muted small">${s.savedMatchId ? 'Saved to the match log automatically. Add optional skill ratings, then tap Save ratings &amp; finish.' : 'Add optional skill ratings, then tap Save match.'}</p>
         <details style="text-align:left;margin-top:10px" ${s.savedMatchId ? 'open' : ''}><summary>Rate their play (optional, 1–5)</summary>
           <div id="sc-ratings">${SKILLS.map(k => ratingRow(k, SKILL_LABELS[k])).join('')}</div>
         </details>
@@ -3525,7 +3525,10 @@ function attendanceCSV() {
     }
   }
   return rows.map(r => r.map(c => {
-    const v = String(c ?? '');
+    let v = String(c ?? '');
+    // A name or note beginning with =, +, - or @ can run as a formula when
+    // the file is opened in a spreadsheet. Prefix it so it stays text.
+    if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
     return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
   }).join(',')).join('\n');
 }
@@ -3650,7 +3653,7 @@ function renderPrivacy() {
   ${row('What stays on your device', 'Roster, matches, skill ratings, attendance, ladder order, coach notes and saved video clips. This is stored in the browser on your device — there is no central database of your team. Export a backup from Settings to move it; delete site data in your browser and it\'s gone.')}
   ${row('What goes to the AI company', 'When you run an analysis (or Compare, or an AI coach note), your clip or a handful of still frames are sent to the AI provider you picked in Settings — usually Google Gemini. Free plans for these services may keep the content and use it to improve their products. Do not film anyone who has not agreed. On a shared team key, the same limits apply.')}
   ${row('Anonymous usage counts', 'The app sends event names only (like "analysis opened") plus a random device id, to help the team understand what gets used. No names, no scores, no video, no messages — ever. If you prefer, block \'/api/track\' in your browser and the app works the same.')}
-  ${row('Sign-in, if your site switched it on', 'Google: the sign-in token is checked on the server, never stored. Phone: Twilio texts a code; only a one-way scrambled id is kept, never your number. Guest sign-in stores nothing beyond this one device.')}
+  ${row('Sign-in, if your site switched it on', 'Google: the sign-in token is checked on the server, never stored. Phone: Twilio receives your number to text the code, and keeps it under its own terms; our usage store only keeps a one-way scrambled id, never your number. Guest sign-in stores nothing beyond this one device.')}
   ${row('If your players are school children', 'Most ShuttleIQ teams are school teams. Get a parent\'s or the school\'s consent before filming or analyzing any student — tell them the clip goes to the AI company. The coach controls the roster on the team device. If a family asks for their child\'s data to be removed, delete the player in the app and ask the school to purge any backups.')}
   ${row('What we never collect', 'No location, contacts, photos of anything besides the clip you analyze, no payment details, no ads. The coach passcode is a soft gate for a shared device, not real security — treat it that way.')}
   ${row('Questions', 'Talk to the coach of your team — they hold the roster and the backups. Anything about a specific AI provider\'s terms lives on that provider\'s site.')}

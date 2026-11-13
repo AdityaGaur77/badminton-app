@@ -4,7 +4,7 @@
    store must also be connected - an SMS endpoint without a counter
    is an SMS endpoint someone can drain. */
 
-import { redisConfig, bump, clientIp } from './_store.js';
+import { redisConfig, bump, clientIp, phoneId } from './_store.js';
 
 function twilioConfig() {
   const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
     const day = new Date().toISOString().slice(0, 10);
     const ipHour = await bump(store, `otp:ip:${ip}:${hour}`, 3700);
     const ipDay = await bump(store, `otp:ipd:${ip}:${day}`, 172800);
-    const phoneHour = await bump(store, `otp:ph:${phoneDigits}:${hour}`, 3700);
+    const phoneHour = await bump(store, `otp:ph:${phoneId(phoneDigits)}:${hour}`, 3700);
     if (ipHour > 5 || ipDay > 20) { res.status(429).json({ ok: false, error: 'Too many codes from this connection. Try again later.' }); return; }
     if (phoneHour > 3) { res.status(429).json({ ok: false, error: 'That number has been sent three codes this hour. Try again later.' }); return; }
   } catch {

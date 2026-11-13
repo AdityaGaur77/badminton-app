@@ -207,6 +207,10 @@
 
 * { box-sizing: border-box; }
 
+/* The HTML hidden attribute must beat any display rule below (a flex
+   container would otherwise stay visible). */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -345,6 +349,16 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   border-radius: 14px;
   box-shadow: var(--shadow-2);
   padding: 6px;
+}
+/* Invisible bridge across the 8px gap, so moving the mouse from the
+   button to the menu does not close it. */
+.nav-menu::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  height: 9px;
 }
 .nav-drop:hover .nav-menu, .nav-drop:focus-within .nav-menu, .nav-drop.open .nav-menu { display: flex; }
 .nav-menu a {
